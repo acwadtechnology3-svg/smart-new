@@ -1,4 +1,4 @@
-import redis from '../config/redis';
+import redis, { checkRedisConnection } from '../config/redis';
 import { query } from '../config/database';
 
 export interface DriverLocationSnapshot {
@@ -30,6 +30,7 @@ class AdminLocationFeed {
     private readonly SNAPSHOT_INTERVAL = 30000; // 30 seconds
     private readonly CACHE_KEY = 'admin:location-feed:latest';
     private isRunningState = false;
+    private lastErrorWasConnection: boolean = false;
 
     private constructor() { }
 
@@ -42,6 +43,14 @@ class AdminLocationFeed {
 
     async start(): Promise<void> {
         if (this.isRunningState) return;
+
+        // Initial check
+        const isRedisAvailable = await checkRedisConnection();
+        if (!isRedisAvailable) {
+            console.warn('⚠️  Redis unavailable - Admin Location Feed will not run');
+            return;
+        }
+
         this.isRunningState = true;
 
         // Initial snapshot
@@ -68,21 +77,30 @@ class AdminLocationFeed {
     }
 
     async getLatestSnapshot(): Promise<DriverLocationSnapshot[]> {
-        const cached = await redis.get(this.CACHE_KEY);
-        if (cached) {
-            return JSON.parse(cached);
+        const isRedisAvailable = await checkRedisConnection();
+        if (!isRedisAvailable) return [];
+
+        try {
+            const cached = await redis.get(this.CACHE_KEY);
+            if (cached) {
+                return JSON.parse(cached);
+            }
+        } catch (error) {
+            // Ignore redis errors
         }
         return [];
     }
 
     async generateSnapshot(): Promise<DriverLocationSnapshot[]> {
+        if (!(await checkRedisConnection())) return [];
+
         const startTime = Date.now();
         try {
             // 1. Scan for online drivers
             const onlineDrivers: string[] = [];
             let cursor = '0';
             do {
-                const result = await redis.scan(cursor, 'MATCH', 'driver:*:online', 'COUNT', '1000');
+                const result = await redis.scan(cursor, 'MATCH', 'driver:*:online', 'COUNT', '100');
                 cursor = result[0];
                 const keys = result[1];
                 keys.forEach(key => {
@@ -265,16 +283,26 @@ class AdminLocationFeed {
             // 6. Save snapshot to Redis
             await redis.set(this.CACHE_KEY, JSON.stringify(snapshots), 'EX', 60);
 
+            // Reset connection error flag on success
+            this.lastErrorWasConnection = false;
+
             const duration = Date.now() - startTime;
-            // Only log if we found drivers to reduce noise
             if (snapshots.length > 0) {
-                console.log(`📸 Location snapshot generated: ${snapshots.length} drivers in ${duration}ms`);
+                console.log(`Location snapshot: ${snapshots.length} drivers in ${duration}ms`);
             }
 
             return snapshots;
 
-        } catch (error) {
-            console.error('Failed to generate location snapshot:', error);
+        } catch (error: any) {
+            if (error.message?.includes('Connection is closed') || error.message?.includes('ECONNREFUSED')) {
+                if (!this.lastErrorWasConnection) {
+                    console.warn('⚠️  Redis unavailable - Location snapshots paused until reconnection');
+                    this.lastErrorWasConnection = true;
+                }
+            } else {
+                console.error('Failed to generate location snapshot:', error.message);
+                this.lastErrorWasConnection = false;
+            }
             return [];
         }
     }

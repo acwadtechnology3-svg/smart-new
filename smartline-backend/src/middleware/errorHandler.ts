@@ -55,28 +55,59 @@ export const errorHandler = (
 
 /**
  * Graceful shutdown handler
+ * Closes services in reverse dependency order:
+ * 1. Stop accepting new connections (server.close)
+ * 2. Stop background services (location feed, workers)
+ * 3. Close Redis connection
+ * 4. Exit process
  */
 export const setupGracefulShutdown = (server: any) => {
-    const shutdown = (signal: string) => {
-        logger.fatal({ msg: `Received ${signal}, shutting down gracefully`, event: 'server_shutdown_started' });
+    let isShuttingDown = false;
 
-        server.close(() => {
-            logger.info({ msg: 'Server closed', event: 'server_shutdown_completed' });
-            process.exit(0);
-        });
+    const shutdown = async (signal: string) => {
+        if (isShuttingDown) return; // Prevent double shutdown
+        isShuttingDown = true;
 
-        // Force shutdown after 10s if graceful fails
-        setTimeout(() => {
+        logger.info({ msg: `Received ${signal}, shutting down gracefully`, event: 'server_shutdown_started' });
+
+        // Force shutdown after 15s if graceful fails
+        const forceTimer = setTimeout(() => {
             logger.error({ msg: 'Could not close connections in time, forceful shutdown', event: 'server_shutdown_forced' });
             process.exit(1);
-        }, 10000);
+        }, 15000);
+
+        try {
+            // 1. Stop accepting new connections
+            await new Promise<void>((resolve) => {
+                server.close(() => resolve());
+            });
+            logger.info({ msg: 'HTTP server closed', event: 'server_closed' });
+
+            // 2. Stop background services
+            const { adminLocationFeed } = await import('../services/AdminLocationFeed');
+            await adminLocationFeed.stop();
+
+            const { stopLocationSync } = await import('../workers/locationSyncWorker');
+            await stopLocationSync();
+
+            // 3. Close Redis
+            const { closeRedis } = await import('../config/redis');
+            await closeRedis();
+
+            logger.info({ msg: 'Graceful shutdown completed', event: 'server_shutdown_completed' });
+        } catch (err) {
+            logger.error({ msg: 'Error during graceful shutdown', event: 'server_shutdown_error', error: err });
+        } finally {
+            clearTimeout(forceTimer);
+            process.exit(0);
+        }
     };
 
     process.on('SIGTERM', () => shutdown('SIGTERM'));
     process.on('SIGINT', () => shutdown('SIGINT'));
 
     process.on('unhandledRejection', (reason, promise) => {
-        logger.fatal({
+        logger.error({
             msg: 'Unhandled Rejection',
             event: 'unhandled_rejection',
             error: reason instanceof Error ? {

@@ -9,6 +9,7 @@ import { useLanguage } from '../../context/LanguageContext';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { StatusBar } from 'expo-status-bar';
+import { useTheme } from '../../theme/useTheme';
 
 const CACHE_KEY = 'cached_promos';
 
@@ -16,6 +17,7 @@ export default function DiscountsScreen() {
     const navigation = useNavigation();
     const { t, isRTL } = useLanguage();
     const insets = useSafeAreaInsets();
+    const { colors, isDark } = useTheme();
 
     // RTL Layout Logic
     const isSimulating = isRTL !== I18nManager.isRTL;
@@ -112,12 +114,12 @@ export default function DiscountsScreen() {
     };
 
     const renderPromo = ({ item, index }: { item: any, index: number }) => (
-        <View style={[styles.card, { flexDirection }]}>
+        <View style={[styles.card, { flexDirection, backgroundColor: colors.surface, shadowColor: colors.shadow || '#000', borderColor: colors.border }]}>
             {/* Left Decorator */}
             <View style={styles.cardLeftDecor}>
-                <View style={styles.circleCutoutTop} />
-                <View style={styles.dashedLine} />
-                <View style={styles.circleCutoutBottom} />
+                <View style={[styles.circleCutoutTop, { backgroundColor: colors.background }]} />
+                <View style={[styles.dashedLine, { borderColor: colors.border }]} />
+                <View style={[styles.circleCutoutBottom, { backgroundColor: colors.background }]} />
             </View>
 
             {/* Content */}
@@ -127,66 +129,66 @@ export default function DiscountsScreen() {
                 paddingRight: isRTL ? 24 : 16
             }]}>
                 <View style={{ flex: 1, alignItems: isRTL ? 'flex-end' : 'flex-start' }}>
-                    <Text style={styles.cardTitle}>{item.discount_percent}% OFF</Text>
-                    <Text style={styles.cardSubtitle}>
+                    <Text style={[styles.cardTitle, { color: colors.primary }]}>{item.discount_percent}% OFF</Text>
+                    <Text style={[styles.cardSubtitle, { color: colors.textSecondary }]}>
                         {t('maxDiscount')} {item.discount_max} {t('currency')}
                     </Text>
-                    <View style={[styles.codeContainer, { flexDirection }]}>
-                        <Text style={styles.codeText}>{item.code}</Text>
+                    <View style={[styles.codeContainer, { flexDirection, backgroundColor: colors.background, borderColor: colors.border }]}>
+                        <Text style={[styles.codeText, { color: colors.textPrimary }]}>{item.code}</Text>
                         <TouchableOpacity onPress={() => copyToClipboard(item.code, item.id)}>
                             {copiedId === item.id ? (
-                                <Check size={16} color={Colors.success} style={[isRTL ? { marginRight: 8 } : { marginLeft: 8 }]} />
+                                <Check size={16} color={colors.success} style={[isRTL ? { marginRight: 8 } : { marginLeft: 8 }]} />
                             ) : (
-                                <Copy size={16} color="#9CA3AF" style={[isRTL ? { marginRight: 8 } : { marginLeft: 8 }]} />
+                                <Copy size={16} color={colors.textMuted} style={[isRTL ? { marginRight: 8 } : { marginLeft: 8 }]} />
                             )}
                         </TouchableOpacity>
                     </View>
-                    <Text style={styles.expiryText}>
+                    <Text style={[styles.expiryText, { color: colors.textMuted }]}>
                         {t('validUntil')} {new Date(item.valid_until).toLocaleDateString()}
                     </Text>
                 </View>
 
                 <TouchableOpacity
-                    style={styles.applyBtnSmall}
+                    style={[styles.applyBtnSmall, { backgroundColor: colors.primary + '11', borderColor: colors.primary + '33' }]}
                     onPress={() => applyPromo(item.code)}
                 >
-                    <Text style={styles.applyBtnSmallText}>{t('use')}</Text>
+                    <Text style={[styles.applyBtnSmallText, { color: colors.primary }]}>{t('use')}</Text>
                 </TouchableOpacity>
             </View>
         </View>
     );
 
     return (
-        <View style={styles.container}>
+        <View style={[styles.container, { backgroundColor: colors.background }]}>
             <StatusBar style="dark" />
 
             {/* Header */}
-            <View style={[styles.header, { paddingTop: insets.top + 10, paddingHorizontal: 20, flexDirection }]}>
+            <View style={[styles.header, { paddingTop: insets.top + 10, paddingHorizontal: 20, flexDirection, backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
                 <TouchableOpacity
                     onPress={() => navigation.goBack()}
                     style={styles.backButton}
                     hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                 >
-                    <ArrowLeft size={24} color="#1F2937" style={{ transform: [{ rotate: isRTL ? '180deg' : '0deg' }] }} />
+                    <ArrowLeft size={24} color={colors.textPrimary} style={{ transform: [{ rotate: isRTL ? '180deg' : '0deg' }] }} />
                 </TouchableOpacity>
-                <Text style={styles.headerTitle}>{t('promoCodes')}</Text>
+                <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>{t('promoCodes')}</Text>
                 <View style={{ width: 24 }} />
             </View>
 
             {/* Input Section */}
-            <View style={styles.inputSection}>
-                <View style={[styles.inputWrapper, { flexDirection }]}>
-                    <Ticket size={20} color="#9CA3AF" style={{ marginHorizontal: 12 }} />
+            <View style={[styles.inputSection, { backgroundColor: colors.surface, shadowColor: colors.shadow || '#000' }]}>
+                <View style={[styles.inputWrapper, { flexDirection, backgroundColor: colors.background, borderColor: colors.border }]}>
+                    <Ticket size={20} color={colors.textMuted} style={{ marginHorizontal: 12 }} />
                     <TextInput
-                        style={[styles.input, { textAlign }]}
+                        style={[styles.input, { textAlign, color: colors.textPrimary }]}
                         placeholder={t('enterPromoCode')}
                         value={promoCode}
                         onChangeText={setPromoCode}
                         autoCapitalize="characters"
-                        placeholderTextColor="#9CA3AF"
+                        placeholderTextColor={colors.textMuted}
                     />
                     <TouchableOpacity
-                        style={[styles.applyButton, { opacity: promoCode ? 1 : 0.6 }]}
+                        style={[styles.applyButton, { opacity: promoCode ? 1 : 0.6, backgroundColor: colors.primary }]}
                         onPress={() => applyPromo(promoCode)}
                         disabled={!promoCode || loading}
                     >
@@ -200,13 +202,13 @@ export default function DiscountsScreen() {
             </View>
 
             <View style={styles.listContainer}>
-                <Text style={[styles.sectionTitle, { textAlign }]}>
+                <Text style={[styles.sectionTitle, { textAlign, color: colors.textPrimary }]}>
                     {t('activePromotions')}
                 </Text>
 
                 {fetching && promos.length === 0 ? (
                     <View style={styles.loadingContainer}>
-                        <ActivityIndicator size="large" color={Colors.primary} />
+                        <ActivityIndicator size="large" color={colors.primary} />
                     </View>
                 ) : (
                     <FlatList
@@ -216,7 +218,7 @@ export default function DiscountsScreen() {
                         contentContainerStyle={{ paddingBottom: 40 }}
                         showsVerticalScrollIndicator={false}
                         refreshControl={
-                            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[Colors.primary]} />
+                            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[colors.primary]} />
                         }
                         ListEmptyComponent={
                             <View style={styles.emptyState}>
@@ -224,8 +226,8 @@ export default function DiscountsScreen() {
                                     source={{ uri: 'https://cdn-icons-png.flaticon.com/512/612/612803.png' }} // Fallback or local asset
                                     style={{ width: 80, height: 80, opacity: 0.5, marginBottom: 16 }}
                                 />
-                                <Text style={styles.emptyText}>{t('noActivePromos')}</Text>
-                                <Text style={styles.emptySubtext}>{t('checkBackLater')}</Text>
+                                <Text style={[styles.emptyText, { color: colors.textPrimary }]}>{t('noActivePromos')}</Text>
+                                <Text style={[styles.emptySubtext, { color: colors.textMuted }]}>{t('checkBackLater')}</Text>
                             </View>
                         }
                     />
@@ -236,49 +238,41 @@ export default function DiscountsScreen() {
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#F9FAFB' },
+    container: { flex: 1 },
     header: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
         paddingBottom: 20,
-        backgroundColor: '#fff',
         borderBottomWidth: 1,
-        borderBottomColor: '#F3F4F6'
     },
     backButton: { padding: 4 },
-    headerTitle: { fontSize: 18, fontWeight: '700', color: '#111827' },
+    headerTitle: { fontSize: 18, fontWeight: '700' },
 
     inputSection: {
         padding: 20,
-        backgroundColor: '#fff',
         marginBottom: 10,
-        shadowColor: 'rgba(0,0,0,0.05)',
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 1,
         shadowRadius: 5,
         elevation: 3
     },
     inputWrapper: {
-        backgroundColor: '#F3F4F6',
         borderRadius: 12,
         height: 54,
         alignItems: 'center',
         borderWidth: 1,
-        borderColor: '#E5E7EB'
     },
     input: {
         flex: 1,
         height: '100%',
         fontSize: 16,
-        color: '#111827',
         fontWeight: '600'
     },
     applyButton: {
         width: 44,
         height: 44,
         borderRadius: 10,
-        backgroundColor: Colors.primary,
         alignItems: 'center',
         justifyContent: 'center',
         marginRight: 5,
@@ -286,58 +280,53 @@ const styles = StyleSheet.create({
     },
 
     listContainer: { flex: 1, padding: 20 },
-    sectionTitle: { fontSize: 16, fontWeight: '700', color: '#374151', marginBottom: 16 },
+    sectionTitle: { fontSize: 16, fontWeight: '700', marginBottom: 16 },
 
     // Card Styles
     card: {
-        backgroundColor: '#fff',
         borderRadius: 16,
         marginBottom: 16,
         height: 140,
-        shadowColor: '#000',
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.05,
         shadowRadius: 8,
         elevation: 2,
         overflow: 'hidden',
         borderWidth: 1,
-        borderColor: '#F3F4F6'
     },
     cardLeftDecor: {
         width: 0, // Visual only via decoration
     },
     circleCutoutTop: {
         position: 'absolute', top: -10, left: -10,
-        width: 20, height: 20, borderRadius: 10, backgroundColor: '#F9FAFB', zIndex: 10
+        width: 20, height: 20, borderRadius: 10, zIndex: 10
     },
     circleCutoutBottom: {
         position: 'absolute', bottom: -10, left: -10,
-        width: 20, height: 20, borderRadius: 10, backgroundColor: '#F9FAFB', zIndex: 10
+        width: 20, height: 20, borderRadius: 10, zIndex: 10
     },
     dashedLine: {
         position: 'absolute', top: 20, bottom: 20, left: 0,
-        width: 1, borderStyle: 'dashed', borderWidth: 1, borderColor: '#E5E7EB', zIndex: 5
+        width: 1, borderStyle: 'dashed', borderWidth: 1, zIndex: 5
     },
     cardContent: {
         flex: 1,
         alignItems: 'center',
         justifyContent: 'space-between',
     },
-    cardTitle: { fontSize: 24, fontWeight: '800', color: Colors.primary },
-    cardSubtitle: { fontSize: 13, color: '#6B7280', marginTop: 4 },
+    cardTitle: { fontSize: 24, fontWeight: '800' },
+    cardSubtitle: { fontSize: 13, marginTop: 4 },
     codeContainer: {
-        backgroundColor: '#F3F4F6',
         paddingHorizontal: 12,
         paddingVertical: 6,
         borderRadius: 8,
         marginTop: 12,
         alignItems: 'center',
         borderWidth: 1,
-        borderColor: '#E5E7EB',
         borderStyle: 'dashed'
     },
-    codeText: { fontSize: 16, fontWeight: '700', color: '#374151', letterSpacing: 1 },
-    expiryText: { fontSize: 11, color: '#9CA3AF', marginTop: 12 },
+    codeText: { fontSize: 16, fontWeight: '700', letterSpacing: 1 },
+    expiryText: { fontSize: 11, marginTop: 12 },
 
     applyBtnSmall: {
         paddingHorizontal: 16,
@@ -347,7 +336,7 @@ const styles = StyleSheet.create({
         borderWidth: 1,
         borderColor: '#DBEAFE'
     },
-    applyBtnSmallText: { fontSize: 13, fontWeight: '700', color: Colors.primary },
+    applyBtnSmallText: { fontSize: 13, fontWeight: '700' },
 
     loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
     emptyState: { alignItems: 'center', justifyContent: 'center', marginTop: 60 },

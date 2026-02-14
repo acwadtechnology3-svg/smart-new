@@ -6,12 +6,7 @@ import { config } from '../config/env';
 import { locationCache } from '../services/locationCache';
 import { tripRouteRecorder } from '../services/TripRouteRecorder';
 import { query } from '../config/database';
-import redis from '../config/redis';
-
-// driverPresence handled by locationCache directly
-
-// Fallback to env config if not available
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
+import redis, { checkRedisConnection } from '../config/redis';
 
 interface AuthSocket extends Socket {
     userId?: string;
@@ -23,12 +18,18 @@ export class SocketServer {
     private connectedDrivers: Map<string, string> = new Map(); // driverId -> socketId
 
     constructor(httpServer: HTTPServer) {
+        const corsOrigin = config.CORS_ORIGIN === '*'
+            ? '*'
+            : config.CORS_ORIGIN.split(',');
+
         this.io = new Server(httpServer, {
             cors: {
-                origin: '*', // Configure properly for production
+                origin: '*',
                 methods: ['GET', 'POST'],
             },
             transports: ['websocket', 'polling'],
+            pingTimeout: 30000,
+            pingInterval: 25000,
         });
 
         this.setupMiddleware();
@@ -47,9 +48,7 @@ export class SocketServer {
                     return next(new Error('Authentication error: No token provided'));
                 }
 
-                // Verify JWT token
-                // Use config.JWT_SECRET if available, otherwise fallback
-                const secret = config.JWT_SECRET || JWT_SECRET;
+                const secret = config.JWT_SECRET;
 
                 try {
                     const decoded = jwt.verify(token, secret) as any;
@@ -78,10 +77,14 @@ export class SocketServer {
         this.io.on('connection', (socket: AuthSocket) => {
             console.log(`[Socket] Client connected: ${socket.id} (User: ${socket.userId})`);
 
-            // Store driver connection
-            if (socket.userRole === 'driver' && socket.userId) {
-                this.connectedDrivers.set(socket.userId, socket.id);
-                console.log(`[Socket] Driver ${socket.userId} connected`);
+            // Store driver connection and join role-based room
+            if (socket.userId) {
+                if (socket.userRole === 'driver') {
+                    this.connectedDrivers.set(socket.userId, socket.id);
+                    console.log(`[Socket] Driver ${socket.userId} connected`);
+                }
+                // Join user-specific room for targeted events (customers & drivers)
+                socket.join(`customer:${socket.userId}`);
             }
 
             // Handle location update
@@ -107,32 +110,31 @@ export class SocketServer {
     private async getDriverActiveTrip(driverId: string): Promise<string | null> {
         try {
             const cacheKey = `driver:${driverId}:active-trip`;
-            const cachedTripId = await redis.get(cacheKey);
 
-            if (cachedTripId) {
-                // If we cached 'none', return null
-                return cachedTripId === 'none' ? null : cachedTripId;
+            // Try cache first if Redis is available
+            if (await checkRedisConnection()) {
+                const cachedTripId = await redis.get(cacheKey);
+                if (cachedTripId) {
+                    return cachedTripId === 'none' ? null : cachedTripId;
+                }
             }
 
-            // Query database for trip where driver_id = driverId AND status = 'started'
+            // Query database
             const result = await query(
                 `SELECT id FROM trips WHERE driver_id = $1 AND status = 'started' LIMIT 1`,
                 [driverId]
             );
 
-            if (result.rows.length > 0) {
-                const tripId = result.rows[0].id;
-                // Cache result for 60 seconds
-                await redis.set(cacheKey, tripId, 'EX', 60);
-                return tripId;
-            } else {
-                // Cache 'none' to avoid repeated DB queries for idle drivers
-                await redis.set(cacheKey, 'none', 'EX', 60);
-                return null;
+            const tripId = result.rows.length > 0 ? result.rows[0].id : null;
+
+            // Cache result if Redis is available
+            if (await checkRedisConnection()) {
+                await redis.set(cacheKey, tripId || 'none', 'EX', 60);
             }
+
+            return tripId;
         } catch (error) {
             console.error('Failed to check active trip:', error);
-            // On error, assume no active trip to be safe/non-blocking
             return null;
         }
     }

@@ -369,6 +369,21 @@ export const translations = {
         callPolice: 'Call Police',
         callPoliceSub: 'Direct line to 122',
         promoCodes: 'Promo Codes',
+
+        // Referral System
+        haveReferralCode: 'Have a referral code?',
+        referralCodePlaceholder: 'e.g. ABC1234',
+        referralCodeHint: 'Enter a friend\'s referral code to earn rewards',
+        referAndEarn: 'Refer & Earn',
+        referralTitle: 'Give 50%, Get 50%',
+        referralDescription: 'Invite your friends to use SmartLine. When they take their first trip, you both get a 50% discount!',
+        yourReferralCode: 'YOUR REFERRAL CODE',
+        copy: 'Copy',
+        copied: 'Copied!',
+        shareCode: 'Share Code',
+        referralCodeCopied: 'Referral code copied to clipboard!',
+        referrals: 'Referrals',
+        totalEarnedRef: 'Earned',
     },
     ar: {
         // Sidebar & Menu
@@ -719,6 +734,21 @@ export const translations = {
         callPolice: 'اتصل بالشرطة',
         callPoliceSub: 'خط مباشر 122',
         promoCodes: 'كود الخصم',
+
+        // Referral System
+        haveReferralCode: 'عندك كود دعوة؟',
+        referralCodePlaceholder: 'مثال: ABC1234',
+        referralCodeHint: 'ادخل كود صاحبك عشان تاخدوا مكافآت',
+        referAndEarn: 'ادعو واكسب',
+        referralTitle: 'خصم ٥٠٪ ليك وليه',
+        referralDescription: 'ادعي أصحابك يستخدموا سمارت لاين. لما يعملوا أول رحلة، هتاخدوا الاتنين خصم ٥٠٪!',
+        yourReferralCode: 'كود الدعوة بتاعك',
+        copy: 'نسخ',
+        copied: 'تم النسخ!',
+        shareCode: 'شارك الكود',
+        referralCodeCopied: 'تم نسخ كود الدعوة!',
+        referrals: 'دعوات',
+        totalEarnedRef: 'أرباح',
     }
 };
 

@@ -7,9 +7,9 @@ import {
     Gift, Tag, ChevronRight, User, LogOut, ArrowRight, ArrowLeft
 } from 'lucide-react-native';
 import { RootStackParamList } from '../types/navigation';
-import { Colors } from '../constants/Colors';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useLanguage } from '../context/LanguageContext';
+import { useTheme } from '../theme/useTheme';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 const { width } = Dimensions.get('window');
@@ -25,19 +25,9 @@ type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 export default function SideMenu({ visible, onClose }: SideMenuProps) {
     const [modalVisible, setModalVisible] = React.useState(false);
     const { t, isRTL } = useLanguage();
+    const { colors, isDark } = useTheme();
 
     // Calculate correct hidden offset
-    // XOR Logic: If isRTL matches I18nManager.isRTL, we use standard directions. 
-    // If mismatch, we flip.
-    // 
-    // Goal:
-    // Arabic (isRTL=true): Want sidebar on visual Right.
-    // English (isRTL=false): Want sidebar on visual Left.
-    //
-    // Offsets:
-    // Native LTR: Right is +W, Left is -W.
-    // Native RTL: Right is -W, Left is +W.
-
     const getHiddenOffset = () => {
         const wantsRight = isRTL;
         const nativeRTL = I18nManager.isRTL;
@@ -108,18 +98,12 @@ export default function SideMenu({ visible, onClose }: SideMenuProps) {
         await AsyncStorage.multiRemove(['userSession', 'token']);
         navigation.reset({
             index: 0,
-            routes: [{ name: 'Auth' as never }],
+            routes: [{ name: 'SplashScreen' as never }],
         });
     };
 
     // Layout Direction Helper
-    // If isRTL matches native, use Row. If mismatch (simulating), use Row-Reverse.
     const flexDirection = (isRTL === I18nManager.isRTL) ? 'row' : 'row-reverse';
-    const textAlign = isRTL ? 'right' : 'left';
-    const iconMargin = isRTL ? { marginLeft: 16 } : { marginRight: 16 };
-
-    // For specific inner items that need strict row-reverse regardless of container
-    const itemDirection = isRTL ? 'row-reverse' : 'row';
 
     return (
         <Modal transparent visible={modalVisible} onRequestClose={onClose} animationType="none">
@@ -134,7 +118,10 @@ export default function SideMenu({ visible, onClose }: SideMenuProps) {
                 {/* Sidebar */}
                 <Animated.View style={[
                     styles.sidebar,
-                    { transform: [{ translateX: slideAnim }] }
+                    {
+                        transform: [{ translateX: slideAnim }],
+                        backgroundColor: colors.surface
+                    }
                 ]}>
                     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
 
@@ -147,73 +134,81 @@ export default function SideMenu({ visible, onClose }: SideMenuProps) {
                                 <User size={30} color="#fff" />
                             </View>
                             <View style={{ flex: 1, marginHorizontal: 12, alignItems: isRTL ? 'flex-end' : 'flex-start' }}>
-                                <Text style={styles.userName}>Salah Ezzat</Text>
+                                <Text style={[styles.userName, { color: colors.textPrimary }]}>Salah Ezzat</Text>
                                 <Text style={styles.editProfileText}>{t('viewProfile')}</Text>
                             </View>
-                            {isRTL ? <ArrowLeft size={16} color="#9CA3AF" /> : <ArrowRight size={16} color="#9CA3AF" />}
+                            {isRTL ? <ArrowLeft size={16} color={colors.textMuted} /> : <ArrowRight size={16} color={colors.textMuted} />}
                         </TouchableOpacity>
 
-                        <View style={styles.divider} />
+                        <View style={[styles.divider, { backgroundColor: colors.border }]} />
 
                         {/* Menu Items */}
                         <View style={styles.menuContainer}>
                             <MenuItem
                                 icon={<BookOpen size={22} color="#F97316" />}
                                 label={t('tripHistory')}
-                                onPress={() => handleNavigation('History')}
+                                onPress={() => handleNavigation('MyTrips')}
                                 isRTL={isRTL}
+                                textColor={colors.textPrimary}
                             />
                             <MenuItem
                                 icon={<CreditCard size={22} color="#10B981" />}
                                 label={t('wallet')}
                                 onPress={() => handleNavigation('Wallet')}
                                 isRTL={isRTL}
+                                textColor={colors.textPrimary}
                             />
                             <MenuItem
                                 icon={<Tag size={22} color="#14B8A6" />}
                                 label={t('discounts')}
                                 onPress={() => handleNavigation('Discounts')}
                                 isRTL={isRTL}
+                                textColor={colors.textPrimary}
                             />
                             <MenuItem
                                 icon={<Headphones size={22} color="#3B82F6" />}
                                 label={t('support')}
                                 onPress={() => handleNavigation('Help')}
                                 isRTL={isRTL}
+                                textColor={colors.textPrimary}
                             />
                             <MenuItem
                                 icon={<MessageSquare size={22} color="#8B5CF6" />}
                                 label={t('messages')}
                                 onPress={() => handleNavigation('Messages')}
                                 isRTL={isRTL}
+                                textColor={colors.textPrimary}
                             />
                             <MenuItem
                                 icon={<ShieldCheck size={22} color="#EF4444" />}
                                 label={t('safetyCenter')}
                                 onPress={() => handleNavigation('Safety')}
                                 isRTL={isRTL}
+                                textColor={colors.textPrimary}
                             />
                             <MenuItem
                                 icon={<Settings size={22} color="#6B7280" />}
                                 label={t('settings')}
                                 onPress={() => handleNavigation('Settings')}
                                 isRTL={isRTL}
+                                textColor={colors.textPrimary}
                             />
                             <MenuItem
                                 icon={<Gift size={22} color="#EC4899" />}
                                 label={t('inviteFriends')}
                                 onPress={() => handleNavigation('InviteFriends')}
                                 isRTL={isRTL}
+                                textColor={colors.textPrimary}
                             />
                         </View>
 
                         {/* Footer */}
-                        <View style={styles.footer}>
+                        <View style={[styles.footer, { borderTopColor: colors.border }]}>
                             <TouchableOpacity style={[styles.menuItem, { flexDirection }]} onPress={handleSignOut}>
                                 <View style={styles.iconBox}>
-                                    <LogOut size={22} color={Colors.danger} />
+                                    <LogOut size={22} color={colors.danger} />
                                 </View>
-                                <Text style={[styles.menuLabel, { color: Colors.danger }]}>{t('signOut')}</Text>
+                                <Text style={[styles.menuLabel, { color: colors.danger }]}>{t('signOut')}</Text>
                             </TouchableOpacity>
                         </View>
 
@@ -224,20 +219,7 @@ export default function SideMenu({ visible, onClose }: SideMenuProps) {
     );
 }
 
-const MenuItem = ({ icon, label, onPress, isRTL }: { icon: React.ReactNode, label: string, onPress: () => void, isRTL: boolean }) => {
-    // If simulating RTL (Ar but Native LTR), we need row-reverse.
-    // If simulating LTR (En but Native RTL), we need row-reverse.
-    // Basically if isRTL != NativeRTL, use row-reverse.
-    // Wait, simpler:
-    // If isRTL: we want [Label ... Icon] ? No, sidebar usually [Icon Label]
-    // Standard Sidebar: [Icon] [Label]
-    // Arabic Sidebar: [Label] [Icon]? No, usually [Icon] [Label] right aligned.
-    // Actually, standard material design RTL: [Icon] [Label] but aligned start (Right).
-
-    // So we just want 'row' direction always (Start -> End), but the 'Start' changes.
-    // If Native LTR + Ar: Start is Left. We want Right. So 'row-reverse'.
-    // If Native RTL + Ar: Start is Right. We want Right. So 'row'.
-
+const MenuItem = ({ icon, label, onPress, isRTL, textColor }: { icon: React.ReactNode, label: string, onPress: () => void, isRTL: boolean, textColor: string }) => {
     const flexDirection = (isRTL === I18nManager.isRTL) ? 'row' : 'row-reverse';
 
     return (
@@ -245,7 +227,7 @@ const MenuItem = ({ icon, label, onPress, isRTL }: { icon: React.ReactNode, labe
             <View style={styles.iconBox}>
                 {icon}
             </View>
-            <Text style={[styles.menuLabel, { textAlign: isRTL ? 'right' : 'left' }]}>{label}</Text>
+            <Text style={[styles.menuLabel, { textAlign: isRTL ? 'right' : 'left', color: textColor }]}>{label}</Text>
         </TouchableOpacity>
     );
 };
@@ -261,7 +243,6 @@ const styles = StyleSheet.create({
     sidebar: {
         width: SIDEBAR_WIDTH,
         height: '100%',
-        backgroundColor: '#fff',
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.25,
@@ -280,11 +261,10 @@ const styles = StyleSheet.create({
     userName: {
         fontSize: 18,
         fontWeight: 'bold',
-        color: '#111827',
     },
     editProfileText: {
         fontSize: 14,
-        color: Colors.primary,
+        color: '#3B82F6',
         marginTop: 2,
     },
     avatarContainer: {
@@ -297,7 +277,6 @@ const styles = StyleSheet.create({
     },
     divider: {
         height: 1,
-        backgroundColor: '#F3F4F6',
         marginVertical: 10,
     },
     menuContainer: {
@@ -316,7 +295,6 @@ const styles = StyleSheet.create({
     },
     menuLabel: {
         fontSize: 16,
-        color: '#374151',
         fontWeight: '500',
         flex: 1,
         marginHorizontal: 12,
@@ -324,6 +302,5 @@ const styles = StyleSheet.create({
     footer: {
         paddingVertical: 20,
         borderTopWidth: 1,
-        borderTopColor: '#F3F4F6',
     }
 });

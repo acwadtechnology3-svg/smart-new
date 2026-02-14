@@ -289,6 +289,14 @@ export function startRealtimeServer(server: Server) {
     });
 
     ws.on('close', () => {
+      // Unregister driver from broadcaster on disconnect
+      if (ctx.role === 'driver' && ctx.userId) {
+        for (const subId of ctx.subscriptions.keys()) {
+          unregisterDriver(ctx.userId, subId);
+        }
+      }
+
+      // Clean up Supabase channels
       for (const sub of ctx.subscriptions.values()) {
         supabase.removeChannel(sub.channel);
       }

@@ -1,6 +1,8 @@
 import { Pool, PoolConfig } from 'pg';
 import { config } from './env';
 
+export const DIRECT_DB_DISABLED_CODE = 'DIRECT_DB_DISABLED';
+
 // Connection pool configuration
 const poolConfig: PoolConfig | null = config.DATABASE_URL ? {
   connectionString: config.DATABASE_URL,
@@ -17,6 +19,7 @@ const poolConfig: PoolConfig | null = config.DATABASE_URL ? {
 
 // Create connection pool (only if DATABASE_URL is set)
 export const pool = poolConfig ? new Pool(poolConfig) : null;
+let directDatabaseDisabledReason: string | null = null;
 
 if (!pool) {
   console.warn('⚠️  DATABASE_URL not set - Direct database queries will fail. Using Supabase REST API only.');
@@ -29,9 +32,49 @@ if (pool) {
   });
 }
 
+function shouldDisableDirectDatabase(error: unknown): boolean {
+  if (!error || typeof error !== 'object') {
+    return false;
+  }
+
+  const pgError = error as { code?: string; message?: string };
+  const message = (pgError.message || '').toLowerCase();
+
+  if (message.includes('tenant or user not found')) {
+    return true;
+  }
+
+  return pgError.code === '28P01' || pgError.code === '3D000';
+}
+
+function disableDirectDatabase(reason: string) {
+  if (directDatabaseDisabledReason) {
+    return;
+  }
+
+  directDatabaseDisabledReason = reason;
+  console.warn(
+    `Direct PostgreSQL disabled: ${reason}. Falling back to Supabase REST queries.`
+  );
+}
+
+function createDirectDatabaseDisabledError(): Error & { code: string } {
+  const error = new Error(
+    directDatabaseDisabledReason
+      ? `Direct database disabled: ${directDatabaseDisabledReason}`
+      : 'Direct database disabled'
+  ) as Error & { code: string };
+  error.code = DIRECT_DB_DISABLED_CODE;
+  return error;
+}
+
+export function isDirectDatabaseEnabled(): boolean {
+  return !!pool && !directDatabaseDisabledReason;
+}
+
 // Connection health check
 export async function checkDatabaseConnection(): Promise<boolean> {
-  if (!pool) return false;
+  if (!pool || directDatabaseDisabledReason) return false;
   try {
     const client = await pool.connect();
     await client.query('SELECT 1');
@@ -66,6 +109,9 @@ export async function query(text: string, params?: any[], timeout: number = 1000
   if (!pool) {
     throw new Error('Database pool not initialized. Set DATABASE_URL in environment variables.');
   }
+  if (directDatabaseDisabledReason) {
+    throw createDirectDatabaseDisabledError();
+  }
 
   const start = Date.now();
 
@@ -90,6 +136,12 @@ export async function query(text: string, params?: any[], timeout: number = 1000
     }
   } catch (error: any) {
     const duration = Date.now() - start;
+
+    if (shouldDisableDirectDatabase(error)) {
+      disableDirectDatabase(error.message || 'Direct database authentication failed');
+      throw createDirectDatabaseDisabledError();
+    }
+
     console.error(`Query error (${duration}ms):`, error.message);
     throw error;
   }

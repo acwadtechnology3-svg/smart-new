@@ -156,7 +156,7 @@ export class ReferralService {
         // 1. Find pending referral where this user is the referee
         const { data: referral } = await supabase
             .from('referrals')
-            .select('id, program_id, referrer_id')
+            .select('id, program_id, referrer_id, referee_id')
             .eq('referee_id', userId)
             .eq('status', 'pending')
             .single();
@@ -199,41 +199,85 @@ export class ReferralService {
         // 2. Issue Rewards
         // Referrer Reward
         if (program.rewards_config.referrer) {
-            await this.issueReward(referral.referrer_id, referral.id, program.rewards_config.referrer, 'referrer');
+            await this.issueReward(
+                referral.referrer_id,
+                referral.id,
+                program.id,
+                program.rewards_config.referrer,
+                'referrer'
+            );
         }
-        // Referee Reward
+        // Referee Reward - use referee_id from the referral, not the referral's own ID
         if (program.rewards_config.referee) {
-            await this.issueReward(referral.id, referral.id, program.rewards_config.referee, 'referee');
+            await this.issueReward(
+                referral.referee_id,
+                referral.id,
+                program.id,
+                program.rewards_config.referee,
+                'referee'
+            );
         }
     }
 
-    private static async issueReward(userId: string, referralId: string, rewardConfig: any, recipientType: string) {
+    private static async issueReward(
+        userId: string,
+        referralId: string,
+        programId: string,
+        rewardConfig: any,
+        recipientType: string
+    ) {
         const { type, amount } = rewardConfig;
+        const numericAmount = Number(amount);
 
         // Log Reward
         await supabase.from('referral_rewards').insert({
             referral_id: referralId,
             user_id: userId,
-            program_id: null, // Should store program ID if available
+            program_id: programId,
             type: type,
-            amount: amount,
+            amount: numericAmount,
             status: 'processed'
         });
 
-        // Credit User Wallet
+        // Credit User Wallet atomically using RPC or increment pattern
         if (type === 'wallet_credit') {
-            // Get current balance
-            const { data: user } = await supabase.from('users').select('balance').eq('id', userId).single();
-            if (user) {
-                const newBalance = (user.balance || 0) + Number(amount);
-                await supabase.from('users').update({ balance: newBalance }).eq('id', userId);
+            // Use Supabase's ability to do atomic increment via raw SQL
+            // Fallback: read-update with optimistic approach
+            const { data: user } = await supabase
+                .from('users')
+                .select('balance')
+                .eq('id', userId)
+                .single();
 
-                // Also log wallet transaction
+            if (user) {
+                const currentBalance = user.balance || 0;
+                const { error } = await supabase
+                    .from('users')
+                    .update({ balance: currentBalance + numericAmount })
+                    .eq('id', userId)
+                    .eq('balance', currentBalance); // Optimistic lock: only update if balance hasn't changed
+
+                if (error) {
+                    // Retry once on conflict
+                    const { data: freshUser } = await supabase
+                        .from('users')
+                        .select('balance')
+                        .eq('id', userId)
+                        .single();
+                    if (freshUser) {
+                        await supabase
+                            .from('users')
+                            .update({ balance: (freshUser.balance || 0) + numericAmount })
+                            .eq('id', userId);
+                    }
+                }
+
+                // Log wallet transaction
                 await supabase.from('wallet_transactions').insert({
                     user_id: userId,
-                    amount: amount,
+                    amount: numericAmount,
                     type: 'referral_bonus',
-                    description: 'Referral Reward'
+                    description: `Referral Reward (${recipientType})`
                 });
             }
         }

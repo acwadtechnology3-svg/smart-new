@@ -12,6 +12,8 @@ const connectedDrivers = new Map<string, ConnectedDriver>();
 export function registerDriver(userId: string, ws: WebSocket, subscriptionId: string) {
   const existing = connectedDrivers.get(userId);
   if (existing) {
+    // Update WebSocket reference if it changed (reconnection)
+    existing.ws = ws;
     existing.subscriptionIds.add(subscriptionId);
   } else {
     connectedDrivers.set(userId, {
@@ -38,6 +40,8 @@ export function broadcastToDrivers(event: string, payload: any) {
   console.log(`[Broadcaster] Broadcasting ${event} to ${connectedDrivers.size} drivers`);
 
   let sentCount = 0;
+  const staleDrivers: string[] = [];
+
   for (const driver of connectedDrivers.values()) {
     if (driver.ws.readyState === WebSocket.OPEN) {
       for (const subscriptionId of driver.subscriptionIds) {
@@ -48,7 +52,15 @@ export function broadcastToDrivers(event: string, payload: any) {
         }));
         sentCount++;
       }
+    } else {
+      // Track stale connections for cleanup
+      staleDrivers.push(driver.userId);
     }
+  }
+
+  // Cleanup stale connections
+  for (const id of staleDrivers) {
+    connectedDrivers.delete(id);
   }
 
   console.log(`[Broadcaster] Sent to ${sentCount} subscriptions`);

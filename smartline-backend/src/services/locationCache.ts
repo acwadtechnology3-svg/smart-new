@@ -1,4 +1,4 @@
-import redis from '../config/redis';
+import redis, { checkRedisConnection } from '../config/redis';
 
 const DRIVER_LOCATIONS_KEY = 'driver:locations'; // Geo set for all driver locations
 const DRIVER_META_PREFIX = 'driver:'; // Hash for driver metadata
@@ -39,6 +39,7 @@ export class LocationCacheService {
     lng: number,
     metadata?: Partial<DriverMetadata>
   ): Promise<boolean> {
+    if (!(await checkRedisConnection())) return false;
     try {
       const pipeline = redis.pipeline();
 
@@ -70,11 +71,7 @@ export class LocationCacheService {
 
   /**
    * Get nearby drivers within radius
-   * @param lat Latitude
-   * @param lng Longitude
-   * @param radiusKm Radius in kilometers
-   * @param limit Maximum number of results
-   * @returns Array of nearby drivers sorted by distance
+   * Uses pipelining for O(1) round trips instead of O(n)
    */
   async getNearbyDrivers(
     lat: number,
@@ -82,8 +79,8 @@ export class LocationCacheService {
     radiusKm: number = 5,
     limit: number = 50
   ): Promise<NearbyDriver[]> {
+    if (!(await checkRedisConnection())) return [];
     try {
-      // Use GEORADIUS to find nearby drivers
       const results = await redis.georadius(
         DRIVER_LOCATIONS_KEY,
         lng,
@@ -92,7 +89,7 @@ export class LocationCacheService {
         'km',
         'WITHDIST',
         'WITHCOORD',
-        'ASC', // Sort by distance ascending
+        'ASC',
         'COUNT',
         limit
       );
@@ -101,33 +98,46 @@ export class LocationCacheService {
         return [];
       }
 
-      // Format results
-      const drivers: NearbyDriver[] = [];
-
-      for (const result of results) {
+      // Parse geo results
+      const candidates = (results as any[]).map(result => {
         const [driverId, distance, coordinates] = result as [string, string, [string, string]];
+        return { driverId, distance, coordinates };
+      });
 
-        // Check if driver is still online (key exists and not expired)
-        const onlineKey = `${DRIVER_ONLINE_PREFIX}${driverId}:online`;
-        const isOnline = await redis.exists(onlineKey);
+      // Pipeline: check online status + get metadata for all drivers at once
+      const pipeline = redis.pipeline();
+      for (const c of candidates) {
+        pipeline.exists(`${DRIVER_ONLINE_PREFIX}${c.driverId}:online`);
+        pipeline.hgetall(`${DRIVER_META_PREFIX}${c.driverId}:meta`);
+      }
+      const pipeResults = await pipeline.exec();
+      if (!pipeResults) return [];
+
+      const drivers: NearbyDriver[] = [];
+      const staleDriverIds: string[] = [];
+
+      for (let i = 0; i < candidates.length; i++) {
+        const c = candidates[i];
+        const isOnline = pipeResults[i * 2]?.[1] === 1;
+        const metadata = (pipeResults[i * 2 + 1]?.[1] as any) || {};
 
         if (!isOnline) {
-          // Driver's TTL expired, remove from geo set
-          await this.removeDriver(driverId);
+          staleDriverIds.push(c.driverId);
           continue;
         }
 
-        // Get metadata
-        const metaKey = `${DRIVER_META_PREFIX}${driverId}:meta`;
-        const metadata = await redis.hgetall(metaKey);
-
         drivers.push({
-          driverId,
-          lat: parseFloat(coordinates[1]),
-          lng: parseFloat(coordinates[0]),
-          distance: parseFloat(distance) * 1000, // Convert km to meters
-          metadata: Object.keys(metadata).length > 0 ? (metadata as any) : undefined,
+          driverId: c.driverId,
+          lat: parseFloat(c.coordinates[1]),
+          lng: parseFloat(c.coordinates[0]),
+          distance: parseFloat(c.distance) * 1000,
+          metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
         });
+      }
+
+      // Clean up stale drivers in background (don't await)
+      if (staleDriverIds.length > 0) {
+        Promise.all(staleDriverIds.map(id => this.removeDriver(id))).catch(() => {});
       }
 
       return drivers;
@@ -141,6 +151,7 @@ export class LocationCacheService {
    * Get specific driver's location
    */
   async getDriverLocation(driverId: string): Promise<DriverLocation | null> {
+    if (!(await checkRedisConnection())) return null;
     try {
       const result = await redis.geopos(DRIVER_LOCATIONS_KEY, driverId);
 
@@ -165,6 +176,7 @@ export class LocationCacheService {
    * Get driver metadata
    */
   async getDriverMetadata(driverId: string): Promise<DriverMetadata | null> {
+    if (!(await checkRedisConnection())) return null;
     try {
       const metaKey = `${DRIVER_META_PREFIX}${driverId}:meta`;
       const metadata = await redis.hgetall(metaKey);
@@ -184,6 +196,7 @@ export class LocationCacheService {
    * Remove driver from location cache
    */
   async removeDriver(driverId: string): Promise<boolean> {
+    if (!(await checkRedisConnection())) return false;
     try {
       const pipeline = redis.pipeline();
 
@@ -208,6 +221,7 @@ export class LocationCacheService {
    * Get count of drivers in cache
    */
   async getDriverCount(): Promise<number> {
+    if (!(await checkRedisConnection())) return 0;
     try {
       const count = await redis.zcard(DRIVER_LOCATIONS_KEY);
       return count;
@@ -218,11 +232,19 @@ export class LocationCacheService {
   }
 
   /**
-   * Get all online driver IDs
+   * Get all online driver IDs (uses SCAN, production-safe)
    */
   async getOnlineDriverIds(): Promise<string[]> {
+    if (!(await checkRedisConnection())) return [];
     try {
-      const keys = await redis.keys(`${DRIVER_ONLINE_PREFIX}*:online`);
+      const keys: string[] = [];
+      let cursor = '0';
+      do {
+        const result = await redis.scan(cursor, 'MATCH', `${DRIVER_ONLINE_PREFIX}*:online`, 'COUNT', '100');
+        cursor = result[0];
+        keys.push(...result[1]);
+      } while (cursor !== '0');
+
       return keys.map(key => key.replace(`${DRIVER_ONLINE_PREFIX}`, '').replace(':online', ''));
     } catch (error) {
       console.error('Failed to get online driver IDs:', error);
@@ -231,25 +253,38 @@ export class LocationCacheService {
   }
 
   /**
-   * Cleanup stale drivers (for maintenance)
+   * Cleanup stale drivers (for maintenance) - uses pipeline for efficiency
    */
   async cleanupStaleDrivers(): Promise<number> {
+    if (!(await checkRedisConnection())) return 0;
     try {
-      let cleanedCount = 0;
       const allDrivers = await redis.zrange(DRIVER_LOCATIONS_KEY, 0, -1);
+      if (allDrivers.length === 0) return 0;
 
+      // Pipeline check all online statuses at once
+      const pipeline = redis.pipeline();
       for (const driverId of allDrivers) {
-        const onlineKey = `${DRIVER_ONLINE_PREFIX}${driverId}:online`;
-        const isOnline = await redis.exists(onlineKey);
+        pipeline.exists(`${DRIVER_ONLINE_PREFIX}${driverId}:online`);
+      }
+      const results = await pipeline.exec();
+      if (!results) return 0;
 
-        if (!isOnline) {
-          await this.removeDriver(driverId);
-          cleanedCount++;
+      const staleIds: string[] = [];
+      allDrivers.forEach((driverId, idx) => {
+        if (results[idx]?.[1] !== 1) {
+          staleIds.push(driverId);
         }
+      });
+
+      // Remove stale drivers
+      for (const driverId of staleIds) {
+        await this.removeDriver(driverId);
       }
 
-      console.log(`Cleaned up ${cleanedCount} stale drivers`);
-      return cleanedCount;
+      if (staleIds.length > 0) {
+        console.log(`Cleaned up ${staleIds.length} stale drivers`);
+      }
+      return staleIds.length;
     } catch (error) {
       console.error('Failed to cleanup stale drivers:', error);
       return 0;

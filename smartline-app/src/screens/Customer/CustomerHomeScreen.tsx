@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, StyleSheet, TouchableOpacity, Dimensions, Animated, Easing, I18nManager, PanResponder, ScrollView, Platform, Image, Linking, Alert } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, Dimensions, Animated, I18nManager, PanResponder, ScrollView, Platform, Image, Linking, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Menu, Scan, ShieldCheck, Search, MapPin, Gift, CarFront, Navigation, ChevronRight } from 'lucide-react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
@@ -25,15 +25,13 @@ type CustomerHomeScreenNavigationProp = NativeStackNavigationProp<RootStackParam
 
 const { width, height } = Dimensions.get('window');
 
-// Enhanced Mock Data for Cars
-const DUMMY_CARS = [
-    { id: 1, top: height * 0.25, left: width * 0.2, rotate: '45deg', delay: 0 },
-    { id: 2, top: height * 0.35, left: width * 0.6, rotate: '120deg', delay: 500 },
-    { id: 3, top: height * 0.30, left: width * 0.8, rotate: '-15deg', delay: 1000 },
-    { id: 4, top: height * 0.45, left: width * 0.3, rotate: '90deg', delay: 1500 },
-    { id: 5, top: height * 0.40, left: width * 0.7, rotate: '-45deg', delay: 200 },
-    { id: 6, top: height * 0.20, left: width * 0.5, rotate: '180deg', delay: 800 },
-];
+// Default to Cairo if location not yet found
+const DEFAULT_REGION = {
+    latitude: 30.0444,
+    longitude: 31.2357,
+    latitudeDelta: 0.05,
+    longitudeDelta: 0.05,
+};
 
 const BANNER_HEIGHT = 160;
 const SNAP_OPEN = 0;
@@ -243,25 +241,22 @@ export default function CustomerHomeScreen() {
 
     return (
         <View style={[styles.container, { backgroundColor: colors.background }]}>
-            {location ? (
+            <View style={styles.mapLayer}>
                 <MapView
-                    style={styles.mapLayer}
-                    initialRegion={{
+                    style={StyleSheet.absoluteFillObject}
+                    initialRegion={location ? {
                         latitude: location.coords.latitude,
                         longitude: location.coords.longitude,
                         latitudeDelta: 0.01,
                         longitudeDelta: 0.01,
-                    }}
+                    } : DEFAULT_REGION}
                     showsUserLocation={true}
                     customMapStyle={isDark ? DARK_EMPTY_MAP_STYLE : EMPTY_MAP_STYLE}
                     userInterfaceStyle={isDark ? 'dark' : 'light'}
                 >
                     <MapTileLayer isDark={isDark} />
-                    {DUMMY_CARS.map(car => null)}
                 </MapView>
-            ) : (
-                <View style={styles.mapLayer}><View style={[styles.mapBackground, { backgroundColor: colors.surface2 }]} /></View>
-            )}
+            </View>
 
             <SafeAreaView style={styles.overlayContainer} pointerEvents="box-none">
                 <View style={[styles.header, { flexDirection }]}>
@@ -422,37 +417,10 @@ export default function CustomerHomeScreen() {
     );
 }
 
-const CarMarker = ({ top, left, rotate, delay }: any) => {
-    const floatAnim = useRef(new Animated.Value(0)).current;
-    useEffect(() => {
-        const anim = Animated.loop(
-            Animated.sequence([
-                Animated.timing(floatAnim, { toValue: -5, duration: 1500, delay: delay, useNativeDriver: true }),
-                Animated.timing(floatAnim, { toValue: 0, duration: 1500, useNativeDriver: true })
-            ])
-        );
-        anim.start();
-        return () => anim.stop();
-    }, []);
-    const combinedY = floatAnim.interpolate({
-        inputRange: [-5, 0],
-        outputRange: [top - 5, top]
-    });
-    return (
-        <Animated.View style={[styles.carMarker, { transform: [{ translateX: left }, { translateY: combinedY }, { rotate }] }]}>
-            <CarFront size={18} color="#4B5563" fill="#1e1e1e" />
-        </Animated.View>
-    );
-};
-
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#EFF6FF' },
     mapLayer: { ...StyleSheet.absoluteFillObject, backgroundColor: '#E5E7EB', overflow: 'hidden' },
     mapBackground: { ...StyleSheet.absoluteFillObject, backgroundColor: '#F3F4F6' },
-    carMarker: {
-        position: 'absolute', width: 32, height: 32, backgroundColor: '#fff', borderRadius: 10,
-        alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 3, elevation: 4, zIndex: 10
-    },
     overlayContainer: { flex: 1 },
     header: {
         flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start',

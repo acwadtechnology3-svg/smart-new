@@ -1,10 +1,11 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { View, StyleSheet, TouchableOpacity, Switch, Image, Dimensions, Animated, Alert, Platform } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, Switch, Image, Dimensions, Animated, Alert, Platform, Linking, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import MapView, { Marker, Polyline } from 'react-native-maps';
 import MapTileLayer from '../../components/MapTileLayer';
 import * as Location from 'expo-location';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Colors } from '../../constants/Colors';
 import { useTheme } from '../../theme/useTheme';
 import { Text } from '../../components/ui/Text';
@@ -13,7 +14,7 @@ import { Card } from '../../components/ui/Card';
 import { apiRequest } from '../../services/backend';
 import { socketService } from '../../services/socketService';
 import { locationTracker, TrackingMode } from '../../services/LocationTrackingService';
-import { Menu, Shield, CircleDollarSign, Navigation, Siren } from 'lucide-react-native';
+import { Menu, Shield, CircleDollarSign, Navigation, Siren, ChevronRight, Gift } from 'lucide-react-native';
 import { useNavigation, useFocusEffect, useRoute } from '@react-navigation/native';
 import Constants from 'expo-constants';
 import DriverSideMenu from '../../components/DriverSideMenu';
@@ -24,6 +25,7 @@ import { registerForPushNotificationsAsync, updateBackendToken } from '../../uti
 import { CachedImage } from '../../components/CachedImage';
 import PopupNotification from '../../components/PopupNotification';
 import SurgeMapLayer from '../../components/SurgeMapLayer';
+import { getActiveBanners, PromoBanner } from '../../services/bannerService';
 import { EMPTY_MAP_STYLE, DARK_EMPTY_MAP_STYLE } from '../../constants/MapStyles';
 
 const { width, height } = Dimensions.get('window');
@@ -48,6 +50,8 @@ export default function DriverHomeScreen() {
     const [locationSubscription, setLocationSubscription] = useState<Location.LocationSubscription | null>(null);
     const [safetyModalVisible, setSafetyModalVisible] = useState(false);
     const [trackingMode, setTrackingMode] = useState<TrackingMode>('idle');
+    const [promoBanners, setPromoBanners] = useState<PromoBanner[]>([]);
+    const [bannersLoading, setBannersLoading] = useState(true);
 
     // Prevent duplicate handling of accepted trips
     const processedAcceptedTrips = useRef(new Set<string>()); // Added this line
@@ -95,31 +99,40 @@ export default function DriverHomeScreen() {
 
     const checkActiveTrip = async () => {
         try {
-            // Check history for any trip that is active
-            const history = await apiRequest<{ trips: any[] }>('/trips/driver/history');
-            const activeTrip = history.trips?.find((t: any) =>
-                ['accepted', 'arrived', 'started'].includes(t.status)
-            );
+            const { trip: activeTrip } = await apiRequest<{ trip: any }>(`/trips/active?t=${Date.now()}`);
 
-            if (activeTrip) {
-                // If it is a travel request (scheduled/intercity), do NOT auto-navigate.
-                // The driver can view it in history or the new sidebar item.
-                if (activeTrip.is_travel_request) {
-                    console.log("Active Travel Request found, staying on Home:", activeTrip.id);
-                    setTrackingMode('idle');
+            if (!activeTrip || !['accepted', 'arrived', 'started'].includes(activeTrip.status)) {
+                return;
+            }
+
+            // If it is a travel request (scheduled/intercity), do NOT auto-navigate.
+            // The driver can view it in history or the new sidebar item.
+            if (activeTrip.is_travel_request) {
+                console.log("Active Travel Request found, staying on Home:", activeTrip.id);
+                setTrackingMode('idle');
+            } else {
+                console.log("Restoring active trip:", activeTrip.id);
+                navigation.navigate('DriverActiveTrip', { tripId: activeTrip.id });
+                setIsOnline(true);
+                if (activeTrip.status === 'started') {
+                    setTrackingMode('active');
                 } else {
-                    console.log("Restoring active trip:", activeTrip.id);
-                    navigation.navigate('DriverActiveTrip', { tripId: activeTrip.id });
-                    setIsOnline(true);
-                    if (activeTrip.status === 'started') {
-                        setTrackingMode('active');
-                    } else {
-                        setTrackingMode('nearDestination');
-                    }
+                    setTrackingMode('nearDestination');
                 }
             }
-        } catch (e) {
+        } catch (e: any) {
+            if (e.status === 404) return;
             console.log("Error checking active trip", e);
+        }
+    };
+
+    const handleBannerPress = (banner: PromoBanner) => {
+        if (banner.action_type === 'screen' && banner.action_value) {
+            navigation.navigate(banner.action_value);
+        } else if (banner.action_type === 'link' && banner.action_value) {
+            Linking.openURL(banner.action_value);
+        } else if (banner.action_type === 'refer') {
+            navigation.navigate('InviteFriends');
         }
     };
 
@@ -176,8 +189,15 @@ export default function DriverHomeScreen() {
                 setWalletBalance(summary.balance || 0);
                 setDailyEarnings(summary.dailyEarnings || 0);
 
-                // Check for active trip to restore state
-                checkActiveTrip();
+                // 4. Fetch Banners
+                try {
+                    const res = await getActiveBanners('driver');
+                    setPromoBanners(res.banners || []);
+                } catch (e) {
+                    console.log("Error fetching banners:", e);
+                } finally {
+                    setBannersLoading(false);
+                }
             }
         })();
     }, []);
@@ -196,6 +216,9 @@ export default function DriverHomeScreen() {
         if (isOnline && location && driverProfile) {
             pollInterval = setInterval(async () => {
                 try {
+                    // Recover from missed realtime events (e.g., accepted trip)
+                    await checkActiveTrip();
+
                     // If we have an incoming trip, verify it is still valid
                     if (incomingTrip) {
                         try {
@@ -683,27 +706,76 @@ export default function DriverHomeScreen() {
                     </TouchableOpacity>
                 </View>
 
-                {/* Bottom Action Area */}
-                <View style={styles.bottomContainer}>
-                    {isOnline && (
-                        <View style={styles.onlineStatusContainer}>
-                            <Animated.View style={[styles.radarPulse, { transform: [{ scale: pulseAnim }], borderColor: colors.primary }]} />
-                            <Text variant="bodyMedium" style={{ color: colors.textPrimary }}>{t('findingTrips')}</Text>
+                {/* Bottom Wrapper to keep banners and buttons together at the bottom */}
+                <View style={styles.bottomWrapper}>
+                    {/* NEW: Banners Section */}
+                    {!incomingTrip && (
+                        <View style={[styles.bannerContainer, { marginBottom: 8 }]}>
+                            {bannersLoading ? (
+                                <View style={[styles.bannerLoading, { backgroundColor: colors.surface }]}>
+                                    <Text variant="caption" style={{ color: colors.textMuted }}>{t('loading') || 'Loading...'}</Text>
+                                </View>
+                            ) : promoBanners.length > 0 ? (
+                                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.bannerScroll}>
+                                    {promoBanners.map((banner) => (
+                                        <TouchableOpacity
+                                            key={banner.id}
+                                            style={styles.bannerItem}
+                                            onPress={() => handleBannerPress(banner)}
+                                        >
+                                            {banner.image_url ? (
+                                                <View style={styles.bannerImageContainer}>
+                                                    <Image source={{ uri: banner.image_url }} style={styles.bannerImage} />
+                                                    <View style={styles.bannerOverlay}>
+                                                        <Text variant="h3" style={[styles.bannerTitle, { textAlign: isRTL ? 'right' : 'left' }]}>{banner.title}</Text>
+                                                        {banner.subtitle && (
+                                                            <Text variant="caption" style={[styles.bannerSub, { textAlign: isRTL ? 'right' : 'left' }]}>{banner.subtitle}</Text>
+                                                        )}
+                                                    </View>
+                                                    <ChevronRight color="#fff" size={20} style={{ margin: 16, transform: [{ rotate: isRTL ? '180deg' : '0deg' }] }} />
+                                                </View>
+                                            ) : (
+                                                <LinearGradient
+                                                    colors={['#4F46E5', '#818CF8']}
+                                                    style={styles.bannerGradient}
+                                                    start={{ x: 0, y: 0 }}
+                                                    end={{ x: 1, y: 0 }}
+                                                >
+                                                    <View style={{ flex: 1, padding: 16, justifyContent: 'center' }}>
+                                                        <Text variant="h3" style={[styles.bannerTitle, { textAlign: isRTL ? 'right' : 'left', color: '#fff' }]}>{banner.title}</Text>
+                                                        {banner.subtitle && (
+                                                            <Text variant="caption" style={[styles.bannerSub, { textAlign: isRTL ? 'right' : 'left', color: 'rgba(255,255,255,0.8)' }]}>{banner.subtitle}</Text>
+                                                        )}
+                                                    </View>
+                                                    <ChevronRight color="#fff" size={20} style={{ margin: 16, transform: [{ rotate: isRTL ? '180deg' : '0deg' }] }} />
+                                                </LinearGradient>
+                                            )}
+                                        </TouchableOpacity>
+                                    ))}
+                                </ScrollView>
+                            ) : null}
                         </View>
                     )}
 
-                    <Button
-                        title={isOnline ? t('goOffline') : t('goOnline')}
-                        onPress={toggleOnline}
-                        variant={isOnline ? 'destructive' : 'primary'}
-                        size="l"
-                        style={{ width: '100%' }}
-                    />
-                </View>
+                    <View style={styles.bottomContainer}>
+                        {isOnline && (
+                            <View style={styles.onlineStatusContainer}>
+                                <Animated.View style={[styles.radarPulse, { transform: [{ scale: pulseAnim }], borderColor: colors.primary }]} />
+                                <Text variant="bodyMedium" style={{ color: colors.textPrimary }}>{t('findingTrips')}</Text>
+                            </View>
+                        )}
 
+                        <Button
+                            title={isOnline ? t('goOffline') : t('goOnline')}
+                            onPress={toggleOnline}
+                            variant={isOnline ? 'destructive' : 'primary'}
+                            size="l"
+                            style={{ width: '100%' }}
+                        />
+                    </View>
+                </View>
             </SafeAreaView>
 
-            {/* Side Menu Component */}
             <PopupNotification role="driver" />
             <DriverSideMenu
                 visible={isSideMenuVisible}
@@ -736,7 +808,10 @@ const styles = StyleSheet.create({
     mapLayer: { ...StyleSheet.absoluteFillObject },
 
     overlayContainer: { flex: 1, justifyContent: 'space-between' },
-
+    bottomWrapper: {
+        width: '100%',
+        paddingBottom: Platform.OS === 'android' ? 20 : 10,
+    },
     header: {
         flexDirection: 'row',
         justifyContent: 'space-between',
@@ -798,7 +873,63 @@ const styles = StyleSheet.create({
         position: 'absolute',
         width: 200, height: 200,
         borderRadius: 100,
-        backgroundColor: 'rgba(79, 70, 229, 0.1)',
+        borderWidth: 2,
+    },
+    bannerContainer: {
+        maxHeight: 120,
+        width: '100%',
+    },
+    bannerScroll: {
+        paddingHorizontal: 20,
+        gap: 12,
+    },
+    bannerItem: {
+        width: width * 0.85,
+        height: 100,
+        borderRadius: 16,
+        overflow: 'hidden',
+        elevation: 4,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+    },
+    bannerImageContainer: {
+        width: '100%',
+        height: '100%',
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    bannerImage: {
+        ...StyleSheet.absoluteFillObject,
+    },
+    bannerOverlay: {
+        flex: 1,
+        padding: 16,
+        justifyContent: 'center',
+        backgroundColor: 'rgba(0,0,0,0.3)',
+    },
+    bannerGradient: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    bannerTitle: {
+        fontSize: 18,
+        fontWeight: '700',
+        color: '#fff',
+    },
+    bannerSub: {
+        fontSize: 12,
+        color: '#fff',
+        marginTop: 2,
+    },
+    bannerLoading: {
+        height: 100,
+        marginHorizontal: 20,
+        borderRadius: 16,
+        alignItems: 'center',
+        justifyContent: 'center',
     },
     findingText: {
         fontSize: 18, fontWeight: '600', color: '#1e1e1e',

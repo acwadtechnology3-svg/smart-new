@@ -9,6 +9,7 @@ import { RootStackParamList } from '../../types/navigation';
 import { apiRequest } from '../../services/backend';
 import { tripStatusService } from '../../services/tripStatusService';
 import { useLanguage } from '../../context/LanguageContext';
+import { useTheme } from '../../theme/useTheme';
 import AppHeader from '../../components/AppHeader';
 
 type SafetyScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Safety'>;
@@ -19,6 +20,7 @@ export default function SafetyScreen() {
     const route = useRoute<SafetyScreenRouteProp>();
     const { tripId } = route.params || {};
     const { t, isRTL } = useLanguage();
+    const { colors, isDark } = useTheme();
 
     const [sending, setSending] = useState(false);
     const [location, setLocation] = useState<Location.LocationObject | null>(null);
@@ -140,47 +142,64 @@ export default function SafetyScreen() {
     };
 
     return (
-        <View style={styles.container}>
+        <View style={[styles.container, { backgroundColor: colors.background }]}>
             <AppHeader title={t('safetyCenter') || 'Safety Center'} showBack={true} />
 
             <ScrollView contentContainerStyle={styles.content}>
                 {/* Hero Status */}
-                <LinearGradient colors={['#EFF6FF', '#DBEAFE']} style={styles.statusCard}>
-                    <ShieldAlert size={48} color="#3B82F6" />
-                    <Text style={styles.statusTitle}>{t('safetyToolkit') || 'Safety Toolkit'}</Text>
-                    <Text style={styles.statusDesc}>{t('safetyToolkitDesc') || 'Your safety is our top priority. Access these tools anytime during your trip.'}</Text>
+                <LinearGradient
+                    colors={isDark ? ['#1e3a8a33', '#1e3a8a66'] : ['#EFF6FF', '#DBEAFE']}
+                    style={[styles.statusCard, { borderColor: colors.border, borderWidth: isDark ? 1 : 0 }]}
+                >
+                    <ShieldAlert size={48} color={isDark ? colors.primary : "#3B82F6"} />
+                    <Text style={[styles.statusTitle, { color: isDark ? colors.textPrimary : '#1E3A8A' }]}>{t('safetyToolkit') || 'Safety Toolkit'}</Text>
+                    <Text style={[styles.statusDesc, { color: isDark ? colors.textSecondary : '#3B82F6' }]}>{t('safetyToolkitDesc') || 'Your safety is our top priority. Access these tools anytime during your trip.'}</Text>
                 </LinearGradient>
 
-                <Text style={[styles.sectionTitle, { textAlign: isRTL ? 'right' : 'left' }]}>{t('emergencyAssistance') || 'Emergency Assistance'}</Text>
+                <Text style={[styles.sectionTitle, { textAlign: isRTL ? 'right' : 'left', color: colors.textPrimary }]}>{t('emergencyAssistance') || 'Emergency Assistance'}</Text>
 
                 {/* SOS Button */}
                 <TouchableOpacity
-                    style={[styles.actionBtn, { borderColor: '#FECACA', backgroundColor: '#FEF2F2', flexDirection: isRTL ? 'row-reverse' : 'row' }]}
+                    style={[
+                        styles.actionBtn,
+                        {
+                            borderColor: isDark ? colors.danger + '44' : '#FECACA',
+                            backgroundColor: isDark ? colors.danger + '11' : '#FEF2F2',
+                            flexDirection: isRTL ? 'row-reverse' : 'row'
+                        }
+                    ]}
                     onPress={handleSOS}
                     disabled={sending}
                 >
-                    <View style={[styles.iconCircle, { backgroundColor: '#FEE2E2', marginRight: isRTL ? 0 : 16, marginLeft: isRTL ? 16 : 0 }]}>
-                        {sending ? <ActivityIndicator color="#EF4444" /> : <AlertTriangle size={24} color="#EF4444" />}
+                    <View style={[styles.iconCircle, { backgroundColor: isDark ? colors.danger + '22' : '#FEE2E2', marginRight: isRTL ? 0 : 16, marginLeft: isRTL ? 16 : 0 }]}>
+                        {sending ? <ActivityIndicator color={colors.danger} /> : <AlertTriangle size={24} color={colors.danger} />}
                     </View>
                     <View style={{ flex: 1, alignItems: isRTL ? 'flex-end' : 'flex-start' }}>
-                        <Text style={[styles.btnTitle, { color: '#EF4444' }]}>{t('sosEmergency') || 'SOS Emergency Alert'}</Text>
-                        <Text style={styles.btnSub}>{t('sosEmergencySub') || 'Instantly notify support team'}</Text>
+                        <Text style={[styles.btnTitle, { color: colors.danger }]}>{t('sosEmergency') || 'SOS Emergency Alert'}</Text>
+                        <Text style={[styles.btnSub, { color: colors.textSecondary }]}>{t('sosEmergencySub') || 'Instantly notify support team'}</Text>
                     </View>
-                    <ChevronRight size={20} color="#FCA5A5" style={{ transform: [{ scaleX: isRTL ? -1 : 1 }] }} />
+                    <ChevronRight size={20} color={isDark ? colors.danger + '88' : "#FCA5A5"} style={{ transform: [{ scaleX: isRTL ? -1 : 1 }] }} />
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                    style={[styles.actionBtn, { borderColor: '#E5E7EB', backgroundColor: '#fff', flexDirection: isRTL ? 'row-reverse' : 'row' }]}
+                    style={[
+                        styles.actionBtn,
+                        {
+                            borderColor: colors.border,
+                            backgroundColor: colors.surface,
+                            flexDirection: isRTL ? 'row-reverse' : 'row'
+                        }
+                    ]}
                     onPress={handleCallPolice}
                 >
-                    <View style={[styles.iconCircle, { marginRight: isRTL ? 0 : 16, marginLeft: isRTL ? 16 : 0 }]}>
-                        <PhoneCall size={24} color="#111827" />
+                    <View style={[styles.iconCircle, { backgroundColor: colors.background, marginRight: isRTL ? 0 : 16, marginLeft: isRTL ? 16 : 0 }]}>
+                        <PhoneCall size={24} color={colors.textPrimary} />
                     </View>
                     <View style={{ flex: 1, alignItems: isRTL ? 'flex-end' : 'flex-start' }}>
-                        <Text style={styles.btnTitle}>{t('callPolice') || 'Call Police'}</Text>
-                        <Text style={styles.btnSub}>{t('callPoliceSub') || 'Direct line to 122'}</Text>
+                        <Text style={[styles.btnTitle, { color: colors.textPrimary }]}>{t('callPolice') || 'Call Police'}</Text>
+                        <Text style={[styles.btnSub, { color: colors.textSecondary }]}>{t('callPoliceSub') || 'Direct line to 122'}</Text>
                     </View>
-                    <ChevronRight size={20} color="#D1D5DB" style={{ transform: [{ scaleX: isRTL ? -1 : 1 }] }} />
+                    <ChevronRight size={20} color={colors.textMuted} style={{ transform: [{ scaleX: isRTL ? -1 : 1 }] }} />
                 </TouchableOpacity>
 
             </ScrollView>
@@ -189,14 +208,14 @@ export default function SafetyScreen() {
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#fff' },
+    container: { flex: 1 },
     content: { padding: 20 },
     statusCard: { padding: 24, borderRadius: 16, alignItems: 'center', marginBottom: 24 },
-    statusTitle: { fontSize: 22, fontWeight: 'bold', color: '#1E3A8A', marginTop: 12, marginBottom: 8 },
-    statusDesc: { textAlign: 'center', color: '#3B82F6', lineHeight: 20, opacity: 0.8 },
-    sectionTitle: { fontSize: 18, fontWeight: 'bold', color: '#111827', marginBottom: 16 },
-    actionBtn: { flexDirection: 'row', alignItems: 'center', padding: 16, borderRadius: 16, borderWidth: 1, borderColor: '#E5E7EB', marginBottom: 12, backgroundColor: '#fff' },
-    iconCircle: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#EFF6FF', alignItems: 'center', justifyContent: 'center', marginRight: 16 },
-    btnTitle: { fontSize: 16, fontWeight: 'bold', color: '#111827' },
-    btnSub: { fontSize: 13, color: '#6B7280' },
+    statusTitle: { fontSize: 22, fontWeight: 'bold', marginTop: 12, marginBottom: 8 },
+    statusDesc: { textAlign: 'center', lineHeight: 20, opacity: 0.8 },
+    sectionTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 16 },
+    actionBtn: { flexDirection: 'row', alignItems: 'center', padding: 16, borderRadius: 16, borderWidth: 1, marginBottom: 12 },
+    iconCircle: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
+    btnTitle: { fontSize: 16, fontWeight: 'bold' },
+    btnSub: { fontSize: 13 },
 });

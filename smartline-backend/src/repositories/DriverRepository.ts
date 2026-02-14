@@ -1,5 +1,5 @@
 import { BaseRepository } from './BaseRepository';
-import { query } from '../config/database';
+import { DIRECT_DB_DISABLED_CODE, isDirectDatabaseEnabled, query } from '../config/database';
 import { supabase } from '../config/supabase';
 
 export interface Driver {
@@ -59,6 +59,20 @@ export class DriverRepository extends BaseRepository<Driver> {
     lat: number,
     lng: number
   ): Promise<boolean> {
+    if (!isDirectDatabaseEnabled()) {
+      const { error: supabaseError } = await supabase
+        .from('drivers')
+        .update({
+          current_lat: lat,
+          current_lng: lng,
+          last_location_update: new Date().toISOString(),
+        })
+        .eq('id', driverId);
+
+      if (supabaseError) throw supabaseError;
+      return true;
+    }
+
     try {
       const result = await query(
         `UPDATE drivers
@@ -69,9 +83,12 @@ export class DriverRepository extends BaseRepository<Driver> {
         [driverId, lat, lng]
       );
       return (result.rowCount || 0) > 0;
-    } catch (error) {
+    } catch (error: unknown) {
       // Fallback to Supabase if direct query fails
-      console.warn('Direct query failed, using Supabase:', error);
+      const dbError = error as { code?: string; message?: string };
+      if (dbError.code !== DIRECT_DB_DISABLED_CODE) {
+        console.warn('Direct query failed, using Supabase:', dbError.message || error);
+      }
       const { error: supabaseError } = await supabase
         .from('drivers')
         .update({
@@ -90,15 +107,28 @@ export class DriverRepository extends BaseRepository<Driver> {
    * Set driver online status
    */
   async setOnlineStatus(driverId: string, isOnline: boolean): Promise<boolean> {
+    if (!isDirectDatabaseEnabled()) {
+      const { error: supabaseError } = await supabase
+        .from('drivers')
+        .update({ is_online: isOnline })
+        .eq('id', driverId);
+
+      if (supabaseError) throw supabaseError;
+      return true;
+    }
+
     try {
       const result = await query(
         `UPDATE drivers SET is_online = $2 WHERE id = $1`,
         [driverId, isOnline]
       );
       return (result.rowCount || 0) > 0;
-    } catch (error) {
+    } catch (error: unknown) {
       // Fallback to Supabase if direct query fails
-      console.warn('Direct query failed, using Supabase:', error);
+      const dbError = error as { code?: string; message?: string };
+      if (dbError.code !== DIRECT_DB_DISABLED_CODE) {
+        console.warn('Direct query failed, using Supabase:', dbError.message || error);
+      }
       const { error: supabaseError } = await supabase
         .from('drivers')
         .update({ is_online: isOnline })

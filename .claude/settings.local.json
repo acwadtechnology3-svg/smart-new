@@ -14,7 +14,11 @@
       "Bash(timeout:*)",
       "Bash(exit 0)",
       "Bash(curl:*)",
-      "Bash(ping:*)"
+      "Bash(ping:*)",
+      "Bash(npx tsc:*)",
+      "Bash(docker:*)",
+      "Bash(wsl --status:*)",
+      "Bash(tasklist:*)"
     ]
   }
 }

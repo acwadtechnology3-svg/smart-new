@@ -25,6 +25,13 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
     const token = await getToken();
     if (token) {
       headers.Authorization = `Bearer ${token}`;
+    } else {
+      // No token available — user is signed out. Fail fast to avoid
+      // noisy MISSING_TOKEN errors from the backend during logout.
+      const error: any = new Error('Not authenticated');
+      error.code = 'AUTH_SIGNED_OUT';
+      error.status = 401;
+      throw error;
     }
   }
 

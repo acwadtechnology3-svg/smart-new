@@ -5,6 +5,7 @@ import { ArrowLeft } from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
 import { Colors } from '../constants/Colors';
 import { useLanguage } from '../context/LanguageContext';
+import { useTheme } from '../theme/useTheme';
 
 interface AppHeaderProps {
     title: string;
@@ -17,6 +18,7 @@ export default function AppHeader({ title, showBack = true, onBack, rightElement
     const insets = useSafeAreaInsets();
     const navigation = useNavigation();
     const { isRTL } = useLanguage();
+    const { colors, isDark } = useTheme();
 
     const handleBack = () => {
         if (onBack) {
@@ -31,15 +33,18 @@ export default function AppHeader({ title, showBack = true, onBack, rightElement
             styles.container,
             {
                 paddingTop: insets.top,
-                flexDirection: isRTL ? 'row-reverse' : 'row'
+                flexDirection: isRTL ? 'row-reverse' : 'row',
+                backgroundColor: colors.surface,
+                borderBottomColor: colors.border,
+                shadowColor: colors.shadow || '#000'
             }
         ]}>
             <View style={styles.sideBlock}>
                 {showBack && (
-                    <TouchableOpacity onPress={handleBack} style={styles.backButton}>
+                    <TouchableOpacity onPress={handleBack} style={[styles.backButton, { backgroundColor: isDark ? colors.background : '#E5E7EB', borderColor: colors.border }]}>
                         <ArrowLeft
                             size={28}
-                            color="#1F2937"
+                            color={colors.textPrimary}
                             strokeWidth={3.5}
                             style={{ transform: [{ scaleX: isRTL ? -1 : 1 }] }}
                         />
@@ -48,7 +53,7 @@ export default function AppHeader({ title, showBack = true, onBack, rightElement
             </View>
 
             <View style={styles.centerBlock}>
-                <Text style={styles.title} numberOfLines={1}>{title}</Text>
+                <Text style={[styles.title, { color: colors.textPrimary }]} numberOfLines={1}>{title}</Text>
             </View>
 
             <View style={[styles.sideBlock, { alignItems: isRTL ? 'flex-start' : 'flex-end' }]}>
@@ -60,16 +65,13 @@ export default function AppHeader({ title, showBack = true, onBack, rightElement
 
 const styles = StyleSheet.create({
     container: {
-        backgroundColor: Colors.white,
         borderBottomWidth: 1,
-        borderBottomColor: Colors.border,
         alignItems: 'center',
         justifyContent: 'space-between',
         paddingHorizontal: 16,
         paddingBottom: 12,
         ...Platform.select({
             ios: {
-                shadowColor: '#000',
                 shadowOffset: { width: 0, height: 2 },
                 shadowOpacity: 0.1,
                 shadowRadius: 4,
@@ -92,15 +94,12 @@ const styles = StyleSheet.create({
         width: 44,
         height: 44,
         borderRadius: 22,
-        backgroundColor: '#E5E7EB',
         alignItems: 'center',
         justifyContent: 'center',
         borderWidth: 1,
-        borderColor: '#D1D5DB',
     },
     title: {
         fontSize: 18,
         fontWeight: '700',
-        color: Colors.textPrimary,
     },
 });

@@ -1,6 +1,6 @@
 import { matchingService, TripRequest, ScoredDriver } from './matchingService';
 import { driverFilter } from './driverFilter';
-import redis from '../config/redis';
+import redis, { checkRedisConnection } from '../config/redis';
 
 export enum DispatchStrategy {
   FIRST_ACCEPT = 'FIRST_ACCEPT', // Send to top drivers, first to accept wins
@@ -70,9 +70,6 @@ export class DispatchStrategyService {
 
   /**
    * BROADCAST_BID Strategy
-   * Send trip to many drivers, collect bids for limited time
-   * Customer sees all bids and chooses preferred driver
-   * Ideal for: Non-urgent trips, customer preference important
    */
   async dispatchBroadcastBid(
     tripRequest: TripRequest,
@@ -96,9 +93,14 @@ export class DispatchStrategyService {
     const expiresAt = new Date(Date.now() + biddingTimeSeconds * 1000);
 
     // Mark as bidding mode
-    await redis.setex(`trip:${tripId}:bidding`, biddingTimeSeconds, '1');
-
-    await this.storePendingOffers(tripId, driverIds, expiresAt);
+    if (await checkRedisConnection()) {
+      try {
+        await redis.setex(`trip:${tripId}:bidding`, biddingTimeSeconds, '1');
+        await this.storePendingOffers(tripId, driverIds, expiresAt);
+      } catch (e) {
+        console.error('Redis error in dispatchBroadcastBid:', e);
+      }
+    }
 
     return {
       strategy: DispatchStrategy.BROADCAST_BID,
@@ -110,9 +112,6 @@ export class DispatchStrategyService {
 
   /**
    * SEQUENTIAL Strategy
-   * Send to best driver, wait for response
-   * If declined/timeout, send to next best driver
-   * Ideal for: Low driver availability, maximize acceptance
    */
   async dispatchSequential(
     tripRequest: TripRequest,
@@ -136,21 +135,27 @@ export class DispatchStrategyService {
     const firstDriverId = drivers[0].driverId;
     const expiresAt = new Date(Date.now() + timeoutSeconds * 1000);
 
-    // Store sequence in Redis
-    await redis.setex(
-      `trip:${tripId}:sequence`,
-      maxRounds * timeoutSeconds,
-      JSON.stringify(drivers.map((d) => d.driverId))
-    );
+    if (await checkRedisConnection()) {
+      try {
+        // Store sequence in Redis
+        await redis.setex(
+          `trip:${tripId}:sequence`,
+          maxRounds * timeoutSeconds,
+          JSON.stringify(drivers.map((d) => d.driverId))
+        );
 
-    await redis.setex(
-      `trip:${tripId}:current_round`,
-      timeoutSeconds,
-      '0' // Start at index 0
-    );
+        await redis.setex(
+          `trip:${tripId}:current_round`,
+          timeoutSeconds,
+          '0' // Start at index 0
+        );
 
-    // Notify first driver
-    await this.storePendingOffers(tripId, [firstDriverId], expiresAt);
+        // Notify first driver
+        await this.storePendingOffers(tripId, [firstDriverId], expiresAt);
+      } catch (e) {
+        console.error('Redis error in dispatchSequential:', e);
+      }
+    }
 
     return {
       strategy: DispatchStrategy.SEQUENTIAL,
@@ -164,30 +169,35 @@ export class DispatchStrategyService {
    * Get next driver in sequential dispatch
    */
   async getNextSequentialDriver(tripId: string): Promise<string | null> {
-    const sequence = await redis.get(`trip:${tripId}:sequence`);
-    const currentRound = await redis.get(`trip:${tripId}:current_round`);
+    if (!(await checkRedisConnection())) return null;
 
-    if (!sequence || !currentRound) {
+    try {
+      const sequence = await redis.get(`trip:${tripId}:sequence`);
+      const currentRound = await redis.get(`trip:${tripId}:current_round`);
+
+      if (!sequence || !currentRound) {
+        return null;
+      }
+
+      const driverIds = JSON.parse(sequence);
+      const nextIndex = parseInt(currentRound) + 1;
+
+      if (nextIndex >= driverIds.length) {
+        return null; // No more drivers
+      }
+
+      // Update current round
+      await redis.setex(`trip:${tripId}:current_round`, 60, nextIndex.toString());
+
+      return driverIds[nextIndex];
+    } catch (e) {
+      console.error('Redis error in getNextSequentialDriver:', e);
       return null;
     }
-
-    const driverIds = JSON.parse(sequence);
-    const nextIndex = parseInt(currentRound) + 1;
-
-    if (nextIndex >= driverIds.length) {
-      return null; // No more drivers
-    }
-
-    // Update current round
-    await redis.setex(`trip:${tripId}:current_round`, 60, nextIndex.toString());
-
-    return driverIds[nextIndex];
   }
 
   /**
    * SCHEDULED Strategy
-   * For trips scheduled in advance
-   * Match drivers 15 minutes before pickup time
    */
   async dispatchScheduled(
     tripRequest: TripRequest,
@@ -197,15 +207,21 @@ export class DispatchStrategyService {
     // Calculate when to dispatch (15 minutes before)
     const dispatchTime = new Date(scheduledTime.getTime() - 15 * 60 * 1000);
 
-    // Store scheduled dispatch job
-    await redis.set(
-      `trip:${tripId}:scheduled`,
-      JSON.stringify({
-        tripRequest,
-        dispatchTime: dispatchTime.toISOString(),
-        scheduledTime: scheduledTime.toISOString(),
-      })
-    );
+    if (await checkRedisConnection()) {
+      try {
+        // Store scheduled dispatch job
+        await redis.set(
+          `trip:${tripId}:scheduled`,
+          JSON.stringify({
+            tripRequest,
+            dispatchTime: dispatchTime.toISOString(),
+            scheduledTime: scheduledTime.toISOString(),
+          })
+        );
+      } catch (e) {
+        console.error('Redis error in dispatchScheduled:', e);
+      }
+    }
 
     // TODO: Schedule job in BullMQ to run at dispatchTime
     // This will be implemented in Phase 5
@@ -239,7 +255,9 @@ export class DispatchStrategyService {
     const driverIds = drivers.slice(0, 5).map((d) => d.driverId);
     const expiresAt = new Date(Date.now() + 15 * 1000);
 
-    await this.storePendingOffers(tripId, driverIds, expiresAt);
+    if (await checkRedisConnection()) {
+      await this.storePendingOffers(tripId, driverIds, expiresAt);
+    }
 
     return {
       strategy: DispatchStrategy.FIRST_ACCEPT,
@@ -257,18 +275,24 @@ export class DispatchStrategyService {
     driverIds: string[],
     expiresAt: Date
   ): Promise<void> {
-    const ttlSeconds = Math.floor((expiresAt.getTime() - Date.now()) / 1000);
+    if (!(await checkRedisConnection())) return;
 
-    // Store set of pending drivers for this trip
-    const key = `trip:${tripId}:pending_drivers`;
-    await redis.sadd(key, ...driverIds);
-    await redis.expire(key, ttlSeconds);
+    try {
+      const ttlSeconds = Math.floor((expiresAt.getTime() - Date.now()) / 1000);
 
-    // Store reverse mapping (driver -> pending trips)
-    for (const driverId of driverIds) {
-      const driverKey = `driver:${driverId}:pending_trips`;
-      await redis.sadd(driverKey, tripId);
-      await redis.expire(driverKey, ttlSeconds);
+      // Store set of pending drivers for this trip
+      const key = `trip:${tripId}:pending_drivers`;
+      await redis.sadd(key, ...driverIds);
+      await redis.expire(key, ttlSeconds);
+
+      // Store reverse mapping (driver -> pending trips)
+      for (const driverId of driverIds) {
+        const driverKey = `driver:${driverId}:pending_trips`;
+        await redis.sadd(driverKey, tripId);
+        await redis.expire(driverKey, ttlSeconds);
+      }
+    } catch (e) {
+      console.error('Redis error in storePendingOffers:', e);
     }
   }
 
@@ -276,42 +300,57 @@ export class DispatchStrategyService {
    * Get pending drivers for a trip
    */
   async getPendingDrivers(tripId: string): Promise<string[]> {
-    const key = `trip:${tripId}:pending_drivers`;
-    return await redis.smembers(key);
+    if (!(await checkRedisConnection())) return [];
+    try {
+      const key = `trip:${tripId}:pending_drivers`;
+      return await redis.smembers(key);
+    } catch (e) {
+      return [];
+    }
   }
 
   /**
    * Remove driver from pending offers
    */
   async removePendingDriver(tripId: string, driverId: string): Promise<void> {
-    await redis.srem(`trip:${tripId}:pending_drivers`, driverId);
-    await redis.srem(`driver:${driverId}:pending_trips`, tripId);
+    if (!(await checkRedisConnection())) return;
+    try {
+      await redis.srem(`trip:${tripId}:pending_drivers`, driverId);
+      await redis.srem(`driver:${driverId}:pending_trips`, tripId);
+    } catch (e) { }
   }
 
   /**
    * Clear all pending offers for a trip
    */
   async clearPendingOffers(tripId: string): Promise<void> {
-    const driverIds = await this.getPendingDrivers(tripId);
+    if (!(await checkRedisConnection())) return;
 
-    // Remove from all driver sets
-    for (const driverId of driverIds) {
-      await redis.srem(`driver:${driverId}:pending_trips`, tripId);
-    }
+    try {
+      const driverIds = await this.getPendingDrivers(tripId);
 
-    // Remove trip set
-    await redis.del(`trip:${tripId}:pending_drivers`);
+      // Remove from all driver sets
+      for (const driverId of driverIds) {
+        await redis.srem(`driver:${driverId}:pending_trips`, tripId);
+      }
+
+      // Remove trip set
+      await redis.del(`trip:${tripId}:pending_drivers`);
+    } catch (e) { }
   }
 
   /**
    * Check if driver has pending trip offer
    */
   async hasPendingOffer(driverId: string, tripId: string): Promise<boolean> {
-    const isMember = await redis.sismember(
-      `driver:${driverId}:pending_trips`,
-      tripId
-    );
-    return isMember === 1;
+    if (!(await checkRedisConnection())) return false;
+    try {
+      const isMember = await redis.sismember(
+        `driver:${driverId}:pending_trips`,
+        tripId
+      );
+      return isMember === 1;
+    } catch (e) { return false; }
   }
 }
 

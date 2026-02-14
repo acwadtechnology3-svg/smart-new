@@ -54,8 +54,10 @@ export default function SettingsScreen() {
                     setNotificationsEnabled(data.user.preferences.notifications ?? true);
                 }
             }
-        } catch (error) {
-            console.error('Failed to load settings:', error);
+        } catch (error: any) {
+            if (error?.code !== 'AUTH_SIGNED_OUT') {
+                console.error('Failed to load settings:', error);
+            }
             // If fetch failed, we already have cached data in 'user' state if available
         } finally {
             setLoading(false);
@@ -100,7 +102,7 @@ export default function SettingsScreen() {
                             Alert.alert(t('success'), t('accountDeleted'));
                             navigation.reset({
                                 index: 0,
-                                routes: [{ name: 'Auth' as never }],
+                                routes: [{ name: 'SplashScreen' as never }],
                             });
                         } catch (error: any) {
                             const msg = error?.response?.data?.error || t('deleteAccountFailed');

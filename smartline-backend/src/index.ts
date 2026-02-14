@@ -120,17 +120,18 @@ app.get('/health', async (req, res) => {
   const dbHealthy = await checkDatabaseConnection();
   const redisHealthy = await checkRedisConnection();
 
-  const status = dbHealthy && redisHealthy ? 'ok' : 'degraded';
-  const statusCode = status === 'ok' ? 200 : 503;
+  // DB is critical, Redis is optional (degraded mode)
+  const status = !dbHealthy ? 'unhealthy' : (redisHealthy ? 'ok' : 'degraded');
+  const statusCode = !dbHealthy ? 503 : 200;
 
   res.status(statusCode).json({
     status,
     timestamp: new Date().toISOString(),
-    uptime: process.uptime(),
+    uptime: Math.floor(process.uptime()),
     environment: config.NODE_ENV,
     services: {
       database: dbHealthy ? 'healthy' : 'unhealthy',
-      redis: redisHealthy ? 'healthy' : 'unhealthy',
+      redis: redisHealthy ? 'healthy' : 'unavailable',
       locationFeed: adminLocationFeed.isRunning() ? 'running' : 'stopped'
     },
   });

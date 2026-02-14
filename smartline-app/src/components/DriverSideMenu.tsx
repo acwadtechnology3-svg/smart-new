@@ -4,7 +4,7 @@ import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
     Wallet, History, CircleDollarSign, Car, Settings, Headphones,
-    LogOut, User, ChevronRight, RefreshCw, MapPin, Navigation
+    LogOut, User, ChevronRight, RefreshCw, MapPin, Navigation, Users
 } from 'lucide-react-native';
 import { RootStackParamList } from '../types/navigation';
 import { useTheme } from '../theme/useTheme';
@@ -141,7 +141,7 @@ export default function DriverSideMenu({ visible, onClose, initialProfile }: Sid
 
     const handleSignOut = async () => {
         onClose();
-        await AsyncStorage.removeItem('userSession');
+        await AsyncStorage.multiRemove(['userSession', 'token']);
         navigation.reset({
             index: 0,
             routes: [{ name: 'SplashScreen' }],
@@ -224,6 +224,7 @@ export default function DriverSideMenu({ visible, onClose, initialProfile }: Sid
 
                         {/* Bottom Menu Items */}
                         <View style={styles.menuSection}>
+                            <MenuItem icon={<Users size={22} color={colors.primary} />} label={t('inviteFriends')} onPress={() => handleNavigation('InviteFriends')} isRTL={isRTL} color={colors.textPrimary} />
                             <MenuItem icon={<Headphones size={22} color={colors.info} />} label={t('support')} onPress={() => handleNavigation('DriverSupport')} isRTL={isRTL} color={colors.textPrimary} />
                             <MenuItem icon={<Settings size={22} color={colors.textSecondary} />} label={t('settings')} onPress={() => handleNavigation('Settings')} isRTL={isRTL} color={colors.textPrimary} />
 

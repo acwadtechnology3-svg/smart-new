@@ -1,6 +1,6 @@
 import { driverPresence } from './driverPresence';
 import { DriverRepository } from '../repositories/DriverRepository';
-import redis from '../config/redis';
+import redis, { checkRedisConnection } from '../config/redis';
 
 const driverRepo = new DriverRepository();
 
@@ -151,6 +151,7 @@ export class DriverFilterService {
    * Check if driver has an active trip
    */
   private async hasActiveTrip(driverId: string): Promise<boolean> {
+    if (!(await checkRedisConnection())) return false;
     try {
       // Check Redis for active trip marker
       const activeTripKey = `driver:${driverId}:active_trip`;
@@ -166,6 +167,7 @@ export class DriverFilterService {
    * Check if driver is in cooldown period (after completing trip)
    */
   private async isInCooldown(driverId: string): Promise<boolean> {
+    if (!(await checkRedisConnection())) return false;
     try {
       const cooldownKey = `driver:${driverId}:cooldown`;
       const inCooldown = await redis.exists(cooldownKey);
@@ -180,6 +182,7 @@ export class DriverFilterService {
    * Set driver cooldown period
    */
   async setCooldown(driverId: string, durationSeconds?: number): Promise<void> {
+    if (!(await checkRedisConnection())) return;
     try {
       const cooldownKey = `driver:${driverId}:cooldown`;
       await redis.setex(
@@ -199,6 +202,7 @@ export class DriverFilterService {
     driverId: string,
     customerId: string
   ): Promise<boolean> {
+    if (!(await checkRedisConnection())) return false;
     try {
       // Check Redis set of blocked drivers for this customer
       const blockedKey = `customer:${customerId}:blocked_drivers`;
@@ -214,6 +218,7 @@ export class DriverFilterService {
    * Check if driver account is in good standing
    */
   private async isInGoodStanding(driverId: string): Promise<boolean> {
+    if (!(await checkRedisConnection())) return true;
     try {
       // Check for fraud flags or account issues
       const flagKey = `driver:${driverId}:fraud_flag`;
@@ -239,6 +244,7 @@ export class DriverFilterService {
    * Mark driver as having active trip
    */
   async setActiveTrip(driverId: string, tripId: string): Promise<void> {
+    if (!(await checkRedisConnection())) return;
     try {
       const activeTripKey = `driver:${driverId}:active_trip`;
       await redis.set(activeTripKey, tripId);
@@ -251,6 +257,7 @@ export class DriverFilterService {
    * Clear driver's active trip marker
    */
   async clearActiveTrip(driverId: string): Promise<void> {
+    if (!(await checkRedisConnection())) return;
     try {
       const activeTripKey = `driver:${driverId}:active_trip`;
       await redis.del(activeTripKey);

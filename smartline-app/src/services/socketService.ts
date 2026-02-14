@@ -38,7 +38,8 @@ class SocketService {
 
             this.socket = io(socketUrl, {
                 auth: { token },
-                transports: ['websocket'],
+                transports: ['polling', 'websocket'],
+                upgrade: true,
                 reconnection: true,
                 reconnectionDelay: 1000,
                 reconnectionDelayMax: 5000,

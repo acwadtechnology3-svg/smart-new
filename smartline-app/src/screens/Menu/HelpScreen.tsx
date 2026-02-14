@@ -2,8 +2,8 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, ScrollView, Platform, LayoutAnimation, UIManager, I18nManager } from 'react-native';
 import { ArrowLeft, MessageCircle, FileText, ChevronRight, ChevronDown } from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
-import { Colors } from '../../constants/Colors';
 import { useLanguage } from '../../context/LanguageContext';
+import { useTheme } from '../../theme/useTheme';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
     UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -12,13 +12,13 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 export default function HelpScreen() {
     const navigation = useNavigation<any>();
     const { t, isRTL } = useLanguage();
+    const { colors } = useTheme();
 
     // RTL Logic
     const isSimulating = isRTL !== I18nManager.isRTL;
     const flexDirection = isSimulating ? 'row-reverse' : 'row';
     const textAlign = isRTL ? 'right' : 'left';
     const iconMargin = isRTL ? { marginLeft: 16, marginRight: 0 } : { marginRight: 16, marginLeft: 0 };
-    const chevronTransform = isRTL ? [{ rotate: '180deg' }] : [];
 
     const [expandedFaq, setExpandedFaq] = useState<number | null>(null);
 
@@ -47,36 +47,36 @@ export default function HelpScreen() {
     ];
 
     return (
-        <SafeAreaView style={styles.container}>
-            <View style={[styles.header, { flexDirection }]}>
+        <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+            <View style={[styles.header, { flexDirection, backgroundColor: colors.surface, shadowColor: colors.shadow }]}>
                 <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-                    <ArrowLeft size={24} color="#1e1e1e" style={{ transform: [{ rotate: isRTL ? '180deg' : '0deg' }] }} />
+                    <ArrowLeft size={24} color={colors.textPrimary} style={{ transform: [{ rotate: isRTL ? '180deg' : '0deg' }] }} />
                 </TouchableOpacity>
-                <Text style={styles.headerTitle}>{t('helpCenter') || 'Help Center'}</Text>
+                <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>{t('helpCenter') || 'Help Center'}</Text>
                 <View style={{ width: 24 }} />
             </View>
 
             <ScrollView contentContainerStyle={styles.content}>
-                <Text style={[styles.sectionTitle, { textAlign }]}>{t('howCanWeHelp') || 'How can we help you?'}</Text>
+                <Text style={[styles.sectionTitle, { textAlign, color: colors.textSecondary }]}>{t('howCanWeHelp') || 'How can we help you?'}</Text>
 
-                <View style={styles.card}>
+                <View style={[styles.card, { backgroundColor: colors.surface, shadowColor: colors.shadow }]}>
                     <TouchableOpacity
                         style={[styles.row, { flexDirection }]}
                         onPress={() => navigation.navigate('CustomerSupportChat')}
                     >
-                        <View style={[styles.iconBox, { backgroundColor: '#EFF6FF' }, iconMargin]}>
-                            <MessageCircle size={24} color="#3B82F6" />
+                        <View style={[styles.iconBox, { backgroundColor: colors.surfaceHighlight }, iconMargin]}>
+                            <MessageCircle size={24} color={colors.primary} />
                         </View>
                         <View style={styles.rowText}>
-                            <Text style={[styles.rowTitle, { textAlign }]}>{t('chatWithSupport') || 'Chat with Support'}</Text>
-                            <Text style={[styles.rowSub, { textAlign }]}>{t('startConversation') || 'Start a conversation now'}</Text>
+                            <Text style={[styles.rowTitle, { textAlign, color: colors.textPrimary }]}>{t('chatWithSupport') || 'Chat with Support'}</Text>
+                            <Text style={[styles.rowSub, { textAlign, color: colors.textSecondary }]}>{t('startConversation') || 'Start a conversation now'}</Text>
                         </View>
-                        <ChevronRight size={20} color="#9CA3AF" style={{ transform: isRTL ? [{ rotate: '180deg' }] : [] }} />
+                        <ChevronRight size={20} color={colors.textMuted} style={{ transform: isRTL ? [{ rotate: '180deg' }] : [] }} />
                     </TouchableOpacity>
                 </View>
 
-                <Text style={[styles.sectionTitle, { textAlign }]}>{t('faqs') || 'Frequently Asked Questions'}</Text>
-                <View style={styles.card}>
+                <Text style={[styles.sectionTitle, { textAlign, color: colors.textSecondary }]}>{t('faqs') || 'Frequently Asked Questions'}</Text>
+                <View style={[styles.card, { backgroundColor: colors.surface, shadowColor: colors.shadow }]}>
                     {FAQS.map((item, index) => (
                         <View key={index}>
                             <TouchableOpacity
@@ -84,23 +84,23 @@ export default function HelpScreen() {
                                 onPress={() => toggleFaq(index)}
                                 activeOpacity={0.7}
                             >
-                                <FileText size={18} color="#6B7280" />
-                                <Text style={[styles.faqText, { textAlign }]}>{item.q}</Text>
+                                <FileText size={18} color={colors.textSecondary} />
+                                <Text style={[styles.faqText, { textAlign, color: colors.textPrimary }]}>{item.q}</Text>
                                 {expandedFaq === index ? (
-                                    <ChevronDown size={16} color="#6B7280" />
+                                    <ChevronDown size={16} color={colors.textSecondary} />
                                 ) : (
-                                    <ChevronRight size={16} color="#D1D5DB" style={{ transform: isRTL ? [{ rotate: '180deg' }] : [] }} />
+                                    <ChevronRight size={16} color={colors.textMuted} style={{ transform: isRTL ? [{ rotate: '180deg' }] : [] }} />
                                 )}
                             </TouchableOpacity>
 
                             {/* Expandable Content */}
                             {expandedFaq === index && (
                                 <View style={styles.faqContent}>
-                                    <Text style={[styles.faqAnswer, { textAlign }]}>{item.a}</Text>
+                                    <Text style={[styles.faqAnswer, { textAlign, color: colors.textSecondary }]}>{item.a}</Text>
                                 </View>
                             )}
 
-                            {index < FAQS.length - 1 && <View style={styles.divider} />}
+                            {index < FAQS.length - 1 && <View style={[styles.divider, { backgroundColor: colors.border }]} />}
                         </View>
                     ))}
                 </View>
@@ -110,14 +110,12 @@ export default function HelpScreen() {
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#F9FAFB' },
+    container: { flex: 1 },
     header: {
         alignItems: 'center', justifyContent: 'space-between',
         paddingHorizontal: 20,
         paddingBottom: 20,
         paddingTop: Platform.OS === 'android' ? 50 : 20,
-        backgroundColor: '#fff',
-        shadowColor: '#000',
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.05,
         shadowRadius: 10,
@@ -125,18 +123,18 @@ const styles = StyleSheet.create({
         zIndex: 10
     },
     backBtn: { padding: 4 },
-    headerTitle: { fontSize: 20, fontWeight: 'bold', color: '#111827' },
+    headerTitle: { fontSize: 20, fontWeight: 'bold' },
     content: { padding: 20 },
-    sectionTitle: { fontSize: 16, fontWeight: '600', color: '#374151', marginBottom: 12, marginTop: 12 },
-    card: { backgroundColor: '#fff', borderRadius: 16, padding: 16, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 4, elevation: 2 },
+    sectionTitle: { fontSize: 16, fontWeight: '600', marginBottom: 12, marginTop: 12 },
+    card: { borderRadius: 16, padding: 16, shadowOpacity: 0.05, shadowRadius: 4, elevation: 2 },
     row: { alignItems: 'center', paddingVertical: 12 },
     iconBox: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
     rowText: { flex: 1, paddingHorizontal: 10 },
-    rowTitle: { fontSize: 16, fontWeight: 'bold', color: '#111827' },
-    rowSub: { fontSize: 13, color: '#6B7280' },
-    divider: { height: 1, backgroundColor: '#F3F4F6', marginVertical: 8 },
+    rowTitle: { fontSize: 16, fontWeight: 'bold' },
+    rowSub: { fontSize: 13 },
+    divider: { height: 1, marginVertical: 8 },
     faqRow: { alignItems: 'center', paddingVertical: 16, gap: 12 },
-    faqText: { flex: 1, fontSize: 15, color: '#374151', fontWeight: '500', marginHorizontal: 12 },
+    faqText: { flex: 1, fontSize: 15, fontWeight: '500', marginHorizontal: 12 },
     faqContent: { paddingBottom: 16, paddingHorizontal: 12 },
-    faqAnswer: { fontSize: 14, color: '#4B5563', lineHeight: 20 },
+    faqAnswer: { fontSize: 14, lineHeight: 20 },
 });

@@ -1,22 +1,24 @@
 import Redlock from 'redlock';
-import redis from '../config/redis';
+import redis, { checkRedisConnection } from '../config/redis';
 
-// Create Redlock instance
-const redlock = new Redlock(
-  [redis], // Array of Redis clients
-  {
-    driftFactor: 0.01, // Expected clock drift
-    retryCount: 3, // Number of times to retry
-    retryDelay: 200, // Time in ms between retries
-    retryJitter: 200, // Random time to add to retries
-    automaticExtensionThreshold: 500, // Extend lock if TTL < this value (ms)
+// Create Redlock instance - lazy init to avoid crash when Redis is unavailable
+let redlock: Redlock | null = null;
+
+function getRedlock(): Redlock {
+  if (!redlock) {
+    redlock = new Redlock([redis], {
+      driftFactor: 0.01,
+      retryCount: 3,
+      retryDelay: 200,
+      retryJitter: 200,
+      automaticExtensionThreshold: 500,
+    });
+    redlock.on('error', () => {
+      // Suppress - Redis down is handled elsewhere
+    });
   }
-);
-
-// Handle Redlock errors
-redlock.on('error', (error) => {
-  console.error('Redlock error:', error);
-});
+  return redlock;
+}
 
 /**
  * Trip Lock Service - Distributed locking to prevent race conditions
@@ -30,8 +32,16 @@ export class TripLockService {
    * Prevents concurrent acceptance by multiple drivers
    */
   async lockTrip(tripId: string): Promise<any> {
+    if (!(await checkRedisConnection())) {
+      // Return fake lock to allow operation to proceed without Redis
+      return {
+        release: async () => { },
+        extend: async () => { }
+      };
+    }
+
     try {
-      const lock = await redlock.acquire([`lock:trip:${tripId}`], this.LOCK_TTL);
+      const lock = await getRedlock().acquire([`lock:trip:${tripId}`], this.LOCK_TTL);
       return lock;
     } catch (error: any) {
       if (error.message?.includes('unable to acquire lock')) {
@@ -46,8 +56,15 @@ export class TripLockService {
    * Prevents driver from accepting multiple trips simultaneously
    */
   async lockDriver(driverId: string): Promise<any> {
+    if (!(await checkRedisConnection())) {
+      return {
+        release: async () => { },
+        extend: async () => { }
+      };
+    }
+
     try {
-      const lock = await redlock.acquire(
+      const lock = await getRedlock().acquire(
         [`lock:driver:${driverId}`],
         this.LOCK_TTL
       );

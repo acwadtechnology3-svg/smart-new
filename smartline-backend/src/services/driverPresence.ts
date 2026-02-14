@@ -1,9 +1,9 @@
-import redis from '../config/redis';
+import redis, { checkRedisConnection } from '../config/redis';
 import { locationCache } from './locationCache';
 
 const ONLINE_KEY_PREFIX = 'driver:';
 const ONLINE_KEY_SUFFIX = ':online';
-const PRESENCE_TTL = 30; // 30 seconds - driver must update within this time
+const PRESENCE_TTL = 120; // 120 seconds - matches locationCache online TTL
 
 /**
  * Driver Presence Service - Manages driver online/offline status
@@ -15,6 +15,7 @@ export class DriverPresenceService {
    * Refreshes TTL on each call
    */
   async setOnline(driverId: string): Promise<boolean> {
+    if (!(await checkRedisConnection())) return false;
     try {
       const key = `${ONLINE_KEY_PREFIX}${driverId}${ONLINE_KEY_SUFFIX}`;
       await redis.set(key, '1', 'EX', PRESENCE_TTL);
@@ -30,6 +31,7 @@ export class DriverPresenceService {
    * Removes from location cache
    */
   async setOffline(driverId: string): Promise<boolean> {
+    if (!(await checkRedisConnection())) return false;
     try {
       const key = `${ONLINE_KEY_PREFIX}${driverId}${ONLINE_KEY_SUFFIX}`;
       await redis.del(key);
@@ -48,6 +50,7 @@ export class DriverPresenceService {
    * Check if driver is currently online
    */
   async isOnline(driverId: string): Promise<boolean> {
+    if (!(await checkRedisConnection())) return false;
     try {
       const key = `${ONLINE_KEY_PREFIX}${driverId}${ONLINE_KEY_SUFFIX}`;
       const exists = await redis.exists(key);
@@ -63,6 +66,7 @@ export class DriverPresenceService {
    * Returns -1 if key doesn't exist or has no expiry
    */
   async getTimeRemaining(driverId: string): Promise<number> {
+    if (!(await checkRedisConnection())) return -1;
     try {
       const key = `${ONLINE_KEY_PREFIX}${driverId}${ONLINE_KEY_SUFFIX}`;
       const ttl = await redis.ttl(key);
@@ -78,6 +82,7 @@ export class DriverPresenceService {
    * Called on each location update
    */
   async refreshPresence(driverId: string): Promise<boolean> {
+    if (!(await checkRedisConnection())) return false;
     try {
       const key = `${ONLINE_KEY_PREFIX}${driverId}${ONLINE_KEY_SUFFIX}`;
       const exists = await redis.exists(key);
@@ -97,11 +102,26 @@ export class DriverPresenceService {
   }
 
   /**
+   * Scan for online driver keys using SCAN (production-safe, non-blocking)
+   */
+  private async scanOnlineKeys(): Promise<string[]> {
+    const keys: string[] = [];
+    let cursor = '0';
+    do {
+      const result = await redis.scan(cursor, 'MATCH', `${ONLINE_KEY_PREFIX}*${ONLINE_KEY_SUFFIX}`, 'COUNT', '100');
+      cursor = result[0];
+      keys.push(...result[1]);
+    } while (cursor !== '0');
+    return keys;
+  }
+
+  /**
    * Get count of currently online drivers
    */
   async getOnlineCount(): Promise<number> {
+    if (!(await checkRedisConnection())) return 0;
     try {
-      const keys = await redis.keys(`${ONLINE_KEY_PREFIX}*${ONLINE_KEY_SUFFIX}`);
+      const keys = await this.scanOnlineKeys();
       return keys.length;
     } catch (error) {
       console.error('Failed to get online count:', error);
@@ -113,8 +133,9 @@ export class DriverPresenceService {
    * Get all online driver IDs
    */
   async getOnlineDriverIds(): Promise<string[]> {
+    if (!(await checkRedisConnection())) return [];
     try {
-      const keys = await redis.keys(`${ONLINE_KEY_PREFIX}*${ONLINE_KEY_SUFFIX}`);
+      const keys = await this.scanOnlineKeys();
       return keys.map(key =>
         key
           .replace(ONLINE_KEY_PREFIX, '')
@@ -130,6 +151,7 @@ export class DriverPresenceService {
    * Batch check online status for multiple drivers
    */
   async areManyOnline(driverIds: string[]): Promise<Map<string, boolean>> {
+    if (!(await checkRedisConnection())) return new Map();
     try {
       const pipeline = redis.pipeline();
       const statusMap = new Map<string, boolean>();
@@ -160,6 +182,7 @@ export class DriverPresenceService {
    * Should be called periodically by a background job
    */
   async cleanupStaleDrivers(): Promise<number> {
+    if (!(await checkRedisConnection())) return 0;
     try {
       return await locationCache.cleanupStaleDrivers();
     } catch (error) {
@@ -172,6 +195,7 @@ export class DriverPresenceService {
    * Get presence statistics
    */
   async getStats() {
+    if (!(await checkRedisConnection())) return null;
     try {
       const onlineCount = await this.getOnlineCount();
       const locationCount = await locationCache.getDriverCount();

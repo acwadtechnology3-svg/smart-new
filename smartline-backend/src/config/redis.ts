@@ -2,56 +2,107 @@ import Redis from 'ioredis';
 import { config } from './env';
 import { Worker, Queue } from 'bullmq';
 
+// Track connection state to avoid log spam
+let loggedDisconnect = false;
+
 // Redis connection configuration
-const redisConfig = {
+const redisConfig: any = {
   host: config.REDIS_HOST,
   port: config.REDIS_PORT,
   password: config.REDIS_PASSWORD || undefined,
-  maxRetriesPerRequest: null, // Disable retries to prevent spam
-  lazyConnect: true, // Don't connect until first command
+  maxRetriesPerRequest: null, // Required for BullMQ compatibility
+  enableReadyCheck: true,
   retryStrategy(times: number) {
-    // Stop retrying after 3 attempts
-    if (times > 3) {
-      console.warn('⚠️  Redis unavailable - Running without Redis');
-      return null; // Stop retrying
+    if (times === 1) {
+      console.warn('⚠️  Redis unavailable - running without Redis (location features disabled)');
     }
-    return Math.min(times * 1000, 3000);
+    // Retry every 30s in case Redis comes online later
+    return 30000;
   },
-  reconnectOnError() {
-    return false; // Don't auto-reconnect on errors
+  reconnectOnError(err: Error) {
+    // Reconnect on connection reset or read-only errors
+    const targetErrors = ['READONLY', 'ECONNRESET', 'ETIMEDOUT'];
+    return targetErrors.some(e => err.message.includes(e));
   },
 };
 
 // Create Redis client instance
-export const redis = config.REDIS_URL ? new Redis(config.REDIS_URL) : new Redis(redisConfig);
+export const redis = config.REDIS_URL
+  ? new Redis(config.REDIS_URL, { maxRetriesPerRequest: null, enableReadyCheck: true })
+  : new Redis(redisConfig);
 
-// Redis event handlers (disabled to reduce console noise when Redis is unavailable)
 redis.on('connect', () => {
   console.log('✅ Redis connected successfully');
 });
 
 redis.on('ready', () => {
+  loggedDisconnect = false;
   console.log('✅ Redis ready to accept commands');
 });
 
 redis.on('error', (err) => {
-  // Only log once, not on every retry
-  if (!redis.status || redis.status === 'end') {
-    console.warn('⚠️  Redis unavailable - Running without Redis (location features disabled)');
+  if (!loggedDisconnect) {
+    console.warn('⚠️  Redis error:', err.message);
+    loggedDisconnect = true;
   }
 });
 
-// Disable noisy reconnection logs
-// redis.on('close', () => { ... });
-// redis.on('reconnecting', () => { ... });
+redis.on('close', () => {
+  if (!loggedDisconnect) {
+    console.warn('⚠️  Redis connection closed - will attempt reconnection');
+    loggedDisconnect = true;
+  }
+});
 
-// Health check function
+let lastHealthCheck: { time: number; result: boolean } | null = null;
+const HEALTH_CHECK_CACHE_MS = 5000;
+
+/**
+ * Check if Redis is ready to accept commands.
+ * Uses cached result within 5s window to avoid hammering Redis with pings.
+ */
 export async function checkRedisConnection(): Promise<boolean> {
+  const now = Date.now();
+  const status = (redis as any).status;
+
+  // Fast path: if status is 'ready', connection is good
+  if (status === 'ready') {
+    // Still cache to avoid excessive checks
+    if (lastHealthCheck && (now - lastHealthCheck.time) < HEALTH_CHECK_CACHE_MS) {
+      return lastHealthCheck.result;
+    }
+    lastHealthCheck = { time: now, result: true };
+    return true;
+  }
+
+  // If reconnecting or connecting, return false without error
+  if (status === 'reconnecting' || status === 'connecting' || status === 'connect') {
+    lastHealthCheck = { time: now, result: false };
+    return false;
+  }
+
+  // If closed/end, return false
+  if (status === 'end' || status === 'close' || status === 'wait') {
+    lastHealthCheck = { time: now, result: false };
+    return false;
+  }
+
+  // Return cached result if valid
+  if (lastHealthCheck && (now - lastHealthCheck.time) < HEALTH_CHECK_CACHE_MS) {
+    return lastHealthCheck.result;
+  }
+
+  // Unknown status - try a ping with timeout
   try {
-    const pong = await redis.ping();
-    return pong === 'PONG';
-  } catch (error) {
-    console.error('Redis health check failed:', error);
+    const pong = await Promise.race([
+      redis.ping(),
+      new Promise<string>((_, reject) => setTimeout(() => reject(new Error('Timeout')), 2000))
+    ]);
+    const result = pong === 'PONG';
+    lastHealthCheck = { time: now, result };
+    return result;
+  } catch {
+    lastHealthCheck = { time: now, result: false };
     return false;
   }
 }

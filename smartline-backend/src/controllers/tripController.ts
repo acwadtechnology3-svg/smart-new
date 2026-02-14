@@ -330,6 +330,10 @@ export const acceptTripOffer = async (req: Request, res: Response) => {
             console.log(`[TripAccepted] Notifying driver ${driverId} with full trip details`);
             // Send full trip object so frontend can start immediately without fetch
             notifyDriver(driverId, 'TRIP_ACCEPTED', updatedTrip);
+            socketServer.emitOfferUpdate(driverId, {
+                event: 'TRIP_ACCEPTED',
+                trip: updatedTrip
+            });
         }
 
         res.json({ success: true, trip: updatedTrip });
@@ -507,8 +511,12 @@ export const updateTripStatus = async (req: Request, res: Response) => {
         // Check Referral Qualification (Background)
         if (status === 'completed') {
             const customerId = tripData.customer_id;
-            ReferralService.checkQualification(customerId, 'trip_completion')
-                .catch(err => console.error('Referral check failed', err));
+            const driverId = tripData.driver_id;
+
+            Promise.all([
+                ReferralService.checkQualification(customerId, 'trip_completion'),
+                driverId ? ReferralService.checkQualification(driverId, 'trip_completion') : Promise.resolve()
+            ]).catch(err => console.error('Referral check failed', err));
         }
 
         res.json({ success: true, trip: data });

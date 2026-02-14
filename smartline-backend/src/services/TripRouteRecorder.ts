@@ -1,4 +1,4 @@
-import redis from '../config/redis';
+import redis, { checkRedisConnection } from '../config/redis';
 import { query } from '../config/database';
 
 interface RoutePoint {
@@ -15,6 +15,7 @@ class TripRouteRecorder {
     private readonly BUFFER_TTL = 86400; // 24 hours
     private readonly FLUSH_INTERVAL = 30000; // 30 seconds
     private readonly MIN_POINT_INTERVAL = 10000; // 10 seconds between points
+    private lastErrorWasConnection: boolean = false;
 
     private constructor() {
         this.startPeriodicFlush();
@@ -31,6 +32,7 @@ class TripRouteRecorder {
      * Start recording points for a trip
      */
     async startRecording(tripId: string): Promise<void> {
+        if (!(await checkRedisConnection())) return;
         try {
             const recordingKey = `trip:route:${tripId}:recording`;
             await redis.set(recordingKey, '1', 'EX', this.BUFFER_TTL);
@@ -44,6 +46,7 @@ class TripRouteRecorder {
      * Add a location point to the buffer
      */
     async addRoutePoint(tripId: string, point: RoutePoint): Promise<void> {
+        if (!(await checkRedisConnection())) return;
         try {
             const recordingKey = `trip:route:${tripId}:recording`;
             const isRecording = await redis.exists(recordingKey);
@@ -80,6 +83,7 @@ class TripRouteRecorder {
      * Stop recording and flush remaining points
      */
     async stopRecording(tripId: string): Promise<void> {
+        if (!(await checkRedisConnection())) return;
         try {
             const recordingKey = `trip:route:${tripId}:recording`;
             await redis.del(recordingKey);
@@ -102,6 +106,7 @@ class TripRouteRecorder {
      * Flush buffered points to PostgreSQL
      */
     async flushToDatabase(tripId: string): Promise<number> {
+        if (!(await checkRedisConnection())) return 0;
         try {
             const bufferKey = `trip:route:${tripId}:buffer`;
 
@@ -183,6 +188,7 @@ class TripRouteRecorder {
      * Get currently buffered points (for debug/viewing)
      */
     async getBufferedPoints(tripId: string): Promise<RoutePoint[]> {
+        if (!(await checkRedisConnection())) return [];
         try {
             const bufferKey = `trip:route:${tripId}:buffer`;
             const points = await redis.lrange(bufferKey, 0, -1);
@@ -203,9 +209,9 @@ class TripRouteRecorder {
      */
     private startPeriodicFlush() {
         setInterval(async () => {
+            if (!(await checkRedisConnection())) return;
             try {
                 // Scan for recording keys
-                // SCAN 0 MATCH trip:route:*:recording
                 let cursor = '0';
                 do {
                     const result = await redis.scan(cursor, 'MATCH', 'trip:route:*:recording', 'COUNT', '100');
@@ -221,9 +227,19 @@ class TripRouteRecorder {
                         }
                     }
                 } while (cursor !== '0');
+                this.lastErrorWasConnection = false;
 
-            } catch (error) {
-                console.error('Error in periodic flush:', error);
+            } catch (error: any) {
+                if (error.message?.includes('Connection is closed') || error.message?.includes('ECONNREFUSED')) {
+                    if (!this.lastErrorWasConnection) {
+                        console.warn('⚠️  Redis unavailable - Periodic flush paused until reconnection');
+                        this.lastErrorWasConnection = true;
+                    }
+                    // Silently skip - Redis will auto-reconnect
+                } else {
+                    console.error('Error in periodic flush:', error.message);
+                    this.lastErrorWasConnection = false;
+                }
             }
         }, this.FLUSH_INTERVAL);
     }
