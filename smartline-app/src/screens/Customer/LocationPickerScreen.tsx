@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, TouchableOpacity, Text, SafeAreaView, Dimensions, ActivityIndicator } from 'react-native';
-import MapView, { UrlTile, Region } from 'react-native-maps';
+import MapView, { Region } from 'react-native-maps';
+import MapTileLayer from '../../components/MapTileLayer';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../types/navigation';
@@ -14,16 +15,6 @@ type LocationPickerRouteProp = RouteProp<RootStackParamList, 'LocationPicker'>;
 
 const { width, height } = Dimensions.get('window');
 const MAPBOX_ACCESS_TOKEN = process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN;
-
-// 👽 02-02-2026: Extracted UrlTile to a component or memoize it to prevent re-creation on every render
-const MapTiles = React.memo(() => (
-    <UrlTile
-        urlTemplate={`https://api.mapbox.com/styles/v1/mapbox/streets-v12/tiles/256/{z}/{x}/{y}@2x?access_token=${MAPBOX_ACCESS_TOKEN}`}
-        maximumZ={19}
-        flipY={false}
-        tileSize={256}
-    />
-));
 
 export default function LocationPickerScreen() {
     const navigation = useNavigation<LocationPickerNavigationProp>();
@@ -118,7 +109,7 @@ export default function LocationPickerScreen() {
                     }}
                     userInterfaceStyle="light"
                 >
-                    <MapTiles />
+                    <MapTileLayer isDark={false} />
                 </MapView>
             )}
 

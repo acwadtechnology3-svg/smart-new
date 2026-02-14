@@ -11,6 +11,10 @@ import {
   getActiveTrip,
   getRequestedTrips,
 } from '../controllers/tripController';
+import {
+  getTripRoute,
+  getTripRouteSummary
+} from '../controllers/tripRouteController';
 import { authenticate } from '../middleware/auth';
 import { requireCustomer, requireDriver } from '../middleware/rbac';
 import { validateBody, validateParams } from '../middleware/validate';
@@ -66,6 +70,21 @@ router.get(
   authenticate,
   requireDriver,
   getRequestedTrips
+);
+
+// Route endpoints from Phase 1
+router.get(
+  '/:tripId/route',
+  authenticate,
+  validateParams(z.object({ tripId: uuidSchema })),
+  getTripRoute
+);
+
+router.get(
+  '/:tripId/route/summary',
+  authenticate,
+  validateParams(z.object({ tripId: uuidSchema })),
+  getTripRouteSummary
 );
 
 // Trip detail (includes customer info)

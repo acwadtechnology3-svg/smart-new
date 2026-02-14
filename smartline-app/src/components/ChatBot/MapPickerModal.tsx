@@ -1,12 +1,13 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { View, Text, StyleSheet, Modal, TouchableOpacity, Dimensions, ActivityIndicator, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import MapView, { UrlTile, Region, Marker } from 'react-native-maps';
+import MapView, { Region, Marker } from 'react-native-maps';
+import MapTileLayer from '../MapTileLayer';
 import { X, MapPin, Locate, Navigation } from 'lucide-react-native';
 import { Colors } from '../../constants/Colors';
 import { useLanguage } from '../../context/LanguageContext';
 import * as Location from 'expo-location';
-import axios from 'axios';
+import { reverseGeocode } from '../../services/mapService';
 
 interface MapPickerModalProps {
     visible: boolean;
@@ -130,10 +131,8 @@ export default function MapPickerModal({ visible, onClose, onLocationSelected, t
 
     const fetchAddressPreview = async (lat: number, lng: number) => {
         try {
-            const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${lng},${lat}.json?access_token=${MAPBOX_ACCESS_TOKEN}&language=${isRTL ? 'ar' : 'en'}`;
-            const response = await axios.get(url, { timeout: 5000 });
-            const place = response.data.features?.[0]?.place_name;
-            setAddressPreview(place || `${lat.toFixed(5)}, ${lng.toFixed(5)}`);
+            const result = await reverseGeocode(lat, lng, isRTL ? 'ar' : 'en');
+            setAddressPreview(result || `${lat.toFixed(5)}, ${lng.toFixed(5)}`);
         } catch (error) {
             console.log('Geocoding error:', error);
             setAddressPreview(`${lat.toFixed(5)}, ${lng.toFixed(5)}`);
@@ -145,9 +144,8 @@ export default function MapPickerModal({ visible, onClose, onLocationSelected, t
         setLoading(true);
 
         try {
-            const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${region.longitude},${region.latitude}.json?access_token=${MAPBOX_ACCESS_TOKEN}&language=${isRTL ? 'ar' : 'en'}`;
-            const response = await axios.get(url, { timeout: 8000 });
-            const address = response.data.features?.[0]?.place_name || addressPreview || `${region.latitude.toFixed(5)}, ${region.longitude.toFixed(5)}`;
+            const result = await reverseGeocode(region.latitude, region.longitude, isRTL ? 'ar' : 'en');
+            const address = result || addressPreview || `${region.latitude.toFixed(5)}, ${region.longitude.toFixed(5)}`;
 
             onLocationSelected(address, region.latitude, region.longitude);
             onClose();
@@ -197,12 +195,7 @@ export default function MapPickerModal({ visible, onClose, onLocationSelected, t
                     pitchEnabled={false}
                     toolbarEnabled={false}
                 >
-                    <UrlTile
-                        urlTemplate={`https://api.mapbox.com/styles/v1/mapbox/streets-v12/tiles/256/{z}/{x}/{y}@2x?access_token=${MAPBOX_ACCESS_TOKEN}`}
-                        maximumZ={19}
-                        flipY={false}
-                        tileSize={256}
-                    />
+                    <MapTileLayer isDark={false} />
                 </MapView>
 
                 {/* Center Pin */}

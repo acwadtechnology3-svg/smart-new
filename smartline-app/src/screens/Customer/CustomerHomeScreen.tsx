@@ -5,9 +5,11 @@ import { Menu, Scan, ShieldCheck, Search, MapPin, Gift, CarFront, Navigation, Ch
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { LinearGradient } from 'expo-linear-gradient';
-import MapView, { UrlTile } from 'react-native-maps';
+import MapView from 'react-native-maps';
+import MapTileLayer from '../../components/MapTileLayer';
 import * as Location from 'expo-location';
 import { RootStackParamList } from '../../types/navigation';
+import { EMPTY_MAP_STYLE, DARK_EMPTY_MAP_STYLE } from '../../constants/MapStyles';
 import { useTheme } from '../../theme/useTheme';
 import { Text } from '../../components/ui/Text';
 import { Button } from '../../components/ui/Button';
@@ -251,17 +253,10 @@ export default function CustomerHomeScreen() {
                         longitudeDelta: 0.01,
                     }}
                     showsUserLocation={true}
-                    userInterfaceStyle={isDark ? "dark" : "light"}
+                    customMapStyle={isDark ? DARK_EMPTY_MAP_STYLE : EMPTY_MAP_STYLE}
+                    userInterfaceStyle={isDark ? 'dark' : 'light'}
                 >
-                    <UrlTile
-                        urlTemplate={isDark
-                            ? `https://api.mapbox.com/styles/v1/mapbox/dark-v11/tiles/256/{z}/{x}/{y}@2x?access_token=${process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN}`
-                            : `https://api.mapbox.com/styles/v1/mapbox/streets-v12/tiles/256/{z}/{x}/{y}@2x?access_token=${process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN}`
-                        }
-                        maximumZ={19}
-                        flipY={false}
-                        tileSize={256}
-                    />
+                    <MapTileLayer isDark={isDark} />
                     {DUMMY_CARS.map(car => null)}
                 </MapView>
             ) : (

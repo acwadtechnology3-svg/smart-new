@@ -42,3 +42,4 @@ yarn-error.*
 
 # Firebase
 google-services.json
+.env

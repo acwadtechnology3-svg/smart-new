@@ -4,7 +4,8 @@ import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { RootStackParamList } from '../../types/navigation';
 import { Colors } from '../../constants/Colors';
 import { Phone, MessageSquare, Navigation } from 'lucide-react-native';
-import MapView, { UrlTile, Marker, Polyline } from 'react-native-maps';
+import MapView, { Marker, Polyline } from 'react-native-maps';
+import MapTileLayer from '../../components/MapTileLayer';
 import * as Location from 'expo-location';
 import { apiRequest } from '../../services/backend';
 import { realtimeClient } from '../../services/realtimeClient';
@@ -309,15 +310,7 @@ export default function DriverActiveTripScreen() {
                     longitudeDelta: 0.01
                 }}
             >
-                <UrlTile
-                    urlTemplate={isDark
-                        ? `https://api.mapbox.com/styles/v1/mapbox/navigation-night-v1/tiles/256/{z}/{x}/{y}@2x?access_token=${MAPBOX_ACCESS_TOKEN}`
-                        : `https://api.mapbox.com/styles/v1/mapbox/streets-v12/tiles/256/{z}/{x}/{y}@2x?access_token=${MAPBOX_ACCESS_TOKEN}`
-                    }
-                    maximumZ={19}
-                    flipY={false}
-                    tileSize={256}
-                />
+                <MapTileLayer isDark={isDark} useNavStyle />
                 {driverLoc && (
                     <Marker coordinate={driverLoc} title={t('myVehicle')}>
                         <View style={[styles.driverMarker, { backgroundColor: colors.primary }]}>

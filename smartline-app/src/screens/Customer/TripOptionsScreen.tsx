@@ -9,7 +9,8 @@ import { ArrowLeft, Car, CloudLightning, CreditCard, Ticket, Clock, Star, BadgeP
 import { RootStackParamList } from '../../types/navigation';
 import { Colors } from '../../constants/Colors';
 import { LinearGradient } from 'expo-linear-gradient';
-import MapView, { UrlTile, Marker, Polyline } from 'react-native-maps';
+import MapView, { Marker, Polyline } from 'react-native-maps';
+import MapTileLayer from '../../components/MapTileLayer';
 import * as Location from 'expo-location';
 import { getDirections } from '../../services/mapService';
 import { apiRequest } from '../../services/backend';
@@ -401,17 +402,9 @@ export default function TripOptionsScreen() {
                         latitude: 30.0444, longitude: 31.2357,
                         latitudeDelta: 0.1, longitudeDelta: 0.1
                     }}
-                    userInterfaceStyle={isDark ? "dark" : "light"}
                 >
-                    <UrlTile
-                        urlTemplate={isDark
-                            ? `https://api.mapbox.com/styles/v1/mapbox/dark-v11/tiles/256/{z}/{x}/{y}@2x?access_token=${MAPBOX_ACCESS_TOKEN}`
-                            : `https://api.mapbox.com/styles/v1/mapbox/streets-v12/tiles/256/{z}/{x}/{y}@2x?access_token=${MAPBOX_ACCESS_TOKEN}`
-                        }
-                        maximumZ={19}
-                        flipY={false}
-                        tileSize={256}
-                    />
+
+                    <MapTileLayer isDark={isDark} />
 
                     {pickupCoords && (
                         <Marker coordinate={pickupCoords} title="Pickup">

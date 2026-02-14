@@ -1,4 +1,4 @@
-import React, { createContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import React, { createContext, useState, useEffect, useCallback, useMemo, ReactNode } from 'react';
 import { Platform, ViewStyle, useColorScheme as _useColorScheme, Appearance } from 'react-native';
 import { storage } from '../utils/storage';
 import { lightColors, darkColors, ThemeColors } from './palettes';
@@ -19,6 +19,8 @@ export interface ThemeContextType {
     isReady: boolean;
 }
 
+const shadowFn = (level: keyof typeof tokens.shadows) => tokens.shadows[level] || tokens.shadows.none;
+
 export const ThemeContext = createContext<ThemeContextType>({
     mode: 'system',
     setMode: () => { },
@@ -28,7 +30,7 @@ export const ThemeContext = createContext<ThemeContextType>({
     tokens,
     spacing: tokens.spacing,
     radius: tokens.radius,
-    shadow: () => ({}),
+    shadow: shadowFn,
     isReady: false,
 });
 
@@ -67,7 +69,12 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
     const isDark = resolvedScheme === 'dark';
     const colors = isDark ? darkColors : lightColors;
 
-    const value = {
+    // Memoize the context value so consumers don't re-render
+    // unless mode, resolvedScheme, or isReady actually changes.
+    // Previously, `value` was a new object on every render,
+    // and `shadow` was a new function reference every time —
+    // causing the entire app tree to re-render on any parent change.
+    const value = useMemo(() => ({
         mode,
         setMode,
         resolvedScheme,
@@ -76,9 +83,9 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
         tokens,
         spacing: tokens.spacing,
         radius: tokens.radius,
-        shadow: (level: keyof typeof tokens.shadows) => tokens.shadows[level] || tokens.shadows.none,
+        shadow: shadowFn,
         isReady,
-    };
+    }), [mode, setMode, resolvedScheme, isDark, isReady]);
 
     if (!isReady) {
         return null; // or a splash screen component

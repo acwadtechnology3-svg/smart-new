@@ -3,6 +3,7 @@ import { supabase } from '../config/supabase';
 import { ReferralService } from '../services/referralService';
 import { broadcastToDrivers, notifyDrivers, notifyDriver } from '../realtime/broadcaster';
 import { locationCache } from '../services/locationCache';
+import { socketServer } from '../socket/socketServer';
 
 // Helper: Calculate Haversine Distance (in km)
 function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -232,6 +233,8 @@ export const createTrip = async (req: Request, res: Response) => {
 
             if (targetIds.length > 0) {
                 notifyDrivers(targetIds, 'INSERT', broadcastPayload);
+                // Emit via new Socket.IO system
+                socketServer.emitTripToNearbyDrivers(broadcastPayload, targetIds);
                 console.log(`[Trip Broadcast] Sent request to ${targetIds.length} drivers within 5km.`);
             } else {
                 console.log(`[Trip Broadcast] No online drivers found within 5km.`);

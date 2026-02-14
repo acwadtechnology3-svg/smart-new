@@ -58,7 +58,7 @@ export class LocationCacheService {
 
       // Mark driver as online with TTL (auto-expires if no updates)
       const onlineKey = `${DRIVER_ONLINE_PREFIX}${driverId}:online`;
-      pipeline.set(onlineKey, '1', 'EX', 30); // 30 seconds TTL
+      pipeline.set(onlineKey, '1', 'EX', 120); // 120 seconds TTL (supports low battery mode)
 
       await pipeline.exec();
       return true;

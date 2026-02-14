@@ -25,6 +25,8 @@ import Members from "./pages/Members";
 import AppPopups from '@/pages/AppPopups';
 import SurgeZones from "./pages/SurgeZones";
 import NotFound from "./pages/NotFound";
+import LiveMap from "./pages/LiveMap";
+import SystemMonitoringDashboard from "./pages/Monitoring";
 
 const queryClient = new QueryClient();
 
@@ -56,6 +58,7 @@ const App = () => (
 
             {/* Protected routes */}
             <Route path="/" element={<ProtectedPage page="dashboard"><Dashboard /></ProtectedPage>} />
+            <Route path="/live-map" element={<ProtectedPage page="dashboard"><LiveMap /></ProtectedPage>} />
             <Route path="/drivers" element={<ProtectedPage page="drivers"><Drivers /></ProtectedPage>} />
             <Route path="/driver-requests" element={<ProtectedPage page="driver_requests"><DriverRequests /></ProtectedPage>} />
             <Route path="/vehicle-change-requests" element={<ProtectedPage page="vehicle_change_requests"><VehicleChangeRequests /></ProtectedPage>} />
@@ -70,6 +73,7 @@ const App = () => (
             <Route path="/support" element={<ProtectedPage page="support"><Support /></ProtectedPage>} />
             <Route path="/safety" element={<ProtectedPage page="safety"><Safety /></ProtectedPage>} />
             <Route path="/settings" element={<ProtectedPage page="settings"><Settings /></ProtectedPage>} />
+            <Route path="/monitoring" element={<ProtectedPage page="settings" requiredRoles={['super_admin', 'admin']}><SystemMonitoringDashboard /></ProtectedPage>} />
 
             {/* Super Admin only routes */}
             <Route

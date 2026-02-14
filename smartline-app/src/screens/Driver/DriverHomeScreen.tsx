@@ -2,7 +2,8 @@ import React, { useEffect, useState, useRef } from 'react';
 import { View, StyleSheet, TouchableOpacity, Switch, Image, Dimensions, Animated, Alert, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import MapView, { UrlTile, Marker, Polyline } from 'react-native-maps';
+import MapView, { Marker, Polyline } from 'react-native-maps';
+import MapTileLayer from '../../components/MapTileLayer';
 import * as Location from 'expo-location';
 import { Colors } from '../../constants/Colors';
 import { useTheme } from '../../theme/useTheme';
@@ -10,7 +11,8 @@ import { Text } from '../../components/ui/Text';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { apiRequest } from '../../services/backend';
-import { realtimeClient } from '../../services/realtimeClient';
+import { socketService } from '../../services/socketService';
+import { locationTracker, TrackingMode } from '../../services/LocationTrackingService';
 import { Menu, Shield, CircleDollarSign, Navigation, Siren } from 'lucide-react-native';
 import { useNavigation, useFocusEffect, useRoute } from '@react-navigation/native';
 import Constants from 'expo-constants';
@@ -22,6 +24,7 @@ import { registerForPushNotificationsAsync, updateBackendToken } from '../../uti
 import { CachedImage } from '../../components/CachedImage';
 import PopupNotification from '../../components/PopupNotification';
 import SurgeMapLayer from '../../components/SurgeMapLayer';
+import { EMPTY_MAP_STYLE, DARK_EMPTY_MAP_STYLE } from '../../constants/MapStyles';
 
 const { width, height } = Dimensions.get('window');
 
@@ -44,6 +47,7 @@ export default function DriverHomeScreen() {
     const [ignoredTrips, setIgnoredTrips] = useState<Map<string, number>>(new Map());
     const [locationSubscription, setLocationSubscription] = useState<Location.LocationSubscription | null>(null);
     const [safetyModalVisible, setSafetyModalVisible] = useState(false);
+    const [trackingMode, setTrackingMode] = useState<TrackingMode>('idle');
 
     // Prevent duplicate handling of accepted trips
     const processedAcceptedTrips = useRef(new Set<string>()); // Added this line
@@ -54,12 +58,17 @@ export default function DriverHomeScreen() {
     useEffect(() => {
         console.log('[Mapbox] 🗺️ Map View Mounted - Consuming Raster Tiles');
 
-        // Register for push notifications
         registerForPushNotificationsAsync().then(token => {
-            if (token) {
-                updateBackendToken(token);
-            }
+            if (token) updateBackendToken(token);
         });
+
+        // Connect to WebSocket
+        socketService.connect();
+
+        return () => {
+            locationTracker.stopTracking();
+            socketService.disconnect();
+        };
     }, []);
 
     useEffect(() => {
@@ -97,11 +106,16 @@ export default function DriverHomeScreen() {
                 // The driver can view it in history or the new sidebar item.
                 if (activeTrip.is_travel_request) {
                     console.log("Active Travel Request found, staying on Home:", activeTrip.id);
+                    setTrackingMode('idle');
                 } else {
                     console.log("Restoring active trip:", activeTrip.id);
                     navigation.navigate('DriverActiveTrip', { tripId: activeTrip.id });
-                    // Also ensure we are online if we have an active trip
                     setIsOnline(true);
+                    if (activeTrip.status === 'started') {
+                        setTrackingMode('active');
+                    } else {
+                        setTrackingMode('nearDestination');
+                    }
                 }
             }
         } catch (e) {
@@ -167,6 +181,13 @@ export default function DriverHomeScreen() {
             }
         })();
     }, []);
+
+    // Update tracking mode when it changes
+    useEffect(() => {
+        if (isOnline) {
+            locationTracker.setMode(trackingMode);
+        }
+    }, [trackingMode, isOnline]);
 
     // Polling for available trips (Backup for Realtime)
     useEffect(() => {
@@ -310,12 +331,14 @@ export default function DriverHomeScreen() {
             });
 
             if (newStatus) {
+                await locationTracker.startTracking('idle');
                 const sub = await Location.watchPositionAsync(
-                    { accuracy: Location.Accuracy.High, timeInterval: 10000, distanceInterval: 50 },
-                    (loc) => { setLocation(loc); updateDriverLocation(user.id, loc); }
+                    { accuracy: Location.Accuracy.Balanced, timeInterval: 5000, distanceInterval: 20 },
+                    (loc) => setLocation(loc)
                 );
                 setLocationSubscription(sub);
             } else {
+                await locationTracker.stopTracking();
                 if (locationSubscription) {
                     locationSubscription.remove();
                     setLocationSubscription(null);
@@ -328,129 +351,63 @@ export default function DriverHomeScreen() {
         }
     };
 
-    // Separate Effect for Trip Listening to handle reloads/status changes reliably
+    // WebSocket Trip Listening
     useEffect(() => {
-        let cleanup: (() => void) | null = null;
-        let cancelled = false;
+        if (!isOnline || !driverProfile) return;
 
-        (async () => {
-            if (isOnline && driverProfile) {
-                console.log("Starting Realtime Trip Listener (Stable)...");
-                console.log("✅ Polling DISABLED - Only showing NEW trips via Realtime");
-                cleanup = await listenForTrips(driverProfile.id, location);
-                if (cancelled && cleanup) cleanup();
+        console.log("Setting up WebSocket trip listeners...");
+
+        // Listen for new trip requests
+        const handleNewTrip = (trip: any) => {
+            console.log(`[WebSocket] 🆕 NEW TRIP ARRIVED!`, trip.id);
+
+            if (trip.status !== 'requested') {
+                return;
             }
-        })();
 
-        return () => {
-            cancelled = true;
-            if (cleanup) {
-                console.log("Cleaning up Trip Listener...");
-                cleanup();
+            // Check if ignored
+            if (ignoredTrips.has(trip.id)) {
+                if (trip.price === ignoredTrips.get(trip.id)) return;
+            }
+
+            // Check distance
+            if (location && trip.pickup_lat) {
+                const dist = getDistanceFromLatLonInKm(
+                    location.coords.latitude, location.coords.longitude,
+                    trip.pickup_lat, trip.pickup_lng
+                );
+                if (dist <= 5) setIncomingTrip(trip);
+            } else {
+                setIncomingTrip(trip); // Fallback if no location
             }
         };
-    }, [isOnline, driverProfile]); // REMOVED 'location' from here
 
-    const updateDriverLocation = async (userId: string, loc: Location.LocationObject) => {
-        try {
-            await apiRequest('/location/update', {
-                method: 'POST',
-                body: JSON.stringify({
-                    lat: loc.coords.latitude,
-                    lng: loc.coords.longitude,
-                    heading: loc.coords.heading !== null && loc.coords.heading >= 0 ? loc.coords.heading : null,
-                    speed: loc.coords.speed !== null && loc.coords.speed >= 0 ? loc.coords.speed : null,
-                    accuracy: loc.coords.accuracy,
-                    timestamp: new Date().toISOString()
-                })
-            });
-        } catch (error: any) {
-            console.error("Loc Update Error:", error.message);
-        }
-    };
+        // Listen for offer updates
+        const handleOfferUpdate = (data: any) => {
+            if (data.event === 'TRIP_ACCEPTED' && data.trip) {
+                const trip = data.trip;
+                console.log(`[WebSocket] 🚀 TRIP ACCEPTED! Navigating to ${trip.id}`);
 
-    const listenForTrips = async (driverId: string, currentLocation: any) => {
-        console.log(`========================================`);
-        console.log(`[Realtime] 🚀 Starting Inbox for Driver: ${driverId}`);
-        console.log(`[Realtime] Driver Location:`, location?.coords);
-        console.log(`========================================`);
+                if (processedAcceptedTrips.current.has(trip.id)) return;
+                processedAcceptedTrips.current.add(trip.id);
 
-        const unsubTripRequests = await realtimeClient.subscribe(
-            { channel: 'driver:trip-requests' },
-            (payload) => {
-                const newTrip = payload.new;
-                console.log(`========================================`);
-                console.log(`[Realtime] 🆕 NEW TRIP ARRIVED!`);
-                console.log(`[Realtime] Trip ID:`, newTrip.id);
-                console.log(`[Realtime] Status:`, newTrip.status);
-                // ...
-                console.log(`========================================`);
-
-                if (newTrip.status !== 'requested') {
-                    console.log(`[Realtime] ⚠️ Ignoring: status is ${newTrip.status}`);
-                    return;
-                }
-
-                const loc = location || currentLocation;
-                if (loc && newTrip.pickup_lat) {
-                    const dist = getDistanceFromLatLonInKm(
-                        loc.coords.latitude, loc.coords.longitude,
-                        newTrip.pickup_lat, newTrip.pickup_lng
-                    );
-                    if (dist <= 5) {
-                        setIncomingTrip(newTrip);
-                    }
+                if (trip.is_travel_request) {
+                    Alert.alert("🎉 Offer Accepted!", "Find this trip in History.", [{ text: "OK" }]);
                 } else {
-                    setIncomingTrip(newTrip);
-                }
-            }
-        );
-
-        const unsubOfferUpdates = await realtimeClient.subscribe(
-            { channel: 'driver:offer-updates' },
-            (payload) => {
-                // Optimized Fast-Track: Receive Full Trip Object
-                if (payload.event === 'TRIP_ACCEPTED' && payload.new) {
-                    const trip = payload.new;
-                    console.log(`[Realtime] 🚀 TRIP ACCEPTED (Direct)! Navigating to ${trip.id}`);
-
-                    if (processedAcceptedTrips.current.has(trip.id)) return;
-                    processedAcceptedTrips.current.add(trip.id);
-
+                    setTrackingMode('active');
                     navigation.navigate('DriverActiveTrip', { tripId: trip.id, initialTripData: trip });
-                    return;
-                }
-
-                const tripId = payload.new?.trip_id;
-                if (payload.new?.driver_id === driverId && payload.new?.status === 'accepted' && tripId) {
-
-                    if (processedAcceptedTrips.current.has(tripId)) {
-                        console.log(`[DriverHome] Already processed acceptance for ${tripId}`);
-                        return;
-                    }
-                    processedAcceptedTrips.current.add(tripId);
-
-                    if (payload.new.is_travel_request) {
-                        console.log(`[DriverHome] Travel Request Accepted. Staying on Home.`);
-                        Alert.alert(
-                            "🎉 Offer Accepted!",
-                            "You can find this trip in your 'Scheduled Trips' or 'History'.",
-                            [{ text: "OK" }]
-                        );
-                        // Refresh data or whatever
-                    } else {
-                        console.log(`[DriverHome] Offer accepted for ${tripId}. Navigating...`);
-                        navigation.navigate('DriverActiveTrip', { tripId });
-                    }
                 }
             }
-        );
+        };
+
+        socketService.on('trip:new', handleNewTrip);
+        socketService.on('trip:offer-update', handleOfferUpdate);
 
         return () => {
-            unsubTripRequests();
-            unsubOfferUpdates();
+            socketService.off('trip:new', handleNewTrip);
+            socketService.off('trip:offer-update', handleOfferUpdate);
         };
-    };
+    }, [isOnline, driverProfile, location, ignoredTrips]);
 
     const handleAcceptTrip = async (tripId: string) => {
         if (!driverProfile || !incomingTrip) return;
@@ -622,17 +579,10 @@ export default function DriverHomeScreen() {
                     longitudeDelta: 0.01,
                 } : DEFAULT_REGION}
                 showsUserLocation={true}
-                userInterfaceStyle={isDark ? "dark" : "light"}
+                customMapStyle={isDark ? DARK_EMPTY_MAP_STYLE : EMPTY_MAP_STYLE}
+                userInterfaceStyle={isDark ? 'dark' : 'light'}
             >
-                <UrlTile
-                    urlTemplate={isDark
-                        ? `https://api.mapbox.com/styles/v1/mapbox/navigation-night-v1/tiles/256/{z}/{x}/{y}@2x?access_token=${process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN}`
-                        : `https://api.mapbox.com/styles/v1/mapbox/streets-v12/tiles/256/{z}/{x}/{y}@2x?access_token=${process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN}`
-                    }
-                    maximumZ={19}
-                    flipY={false}
-                    tileSize={256}
-                />
+                <MapTileLayer isDark={isDark} useNavStyle />
                 <SurgeMapLayer />
 
                 {incomingTrip && (

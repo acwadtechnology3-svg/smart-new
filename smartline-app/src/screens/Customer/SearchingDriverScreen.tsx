@@ -5,7 +5,8 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { X, MapPin, Navigation as NavigationIcon, Car, Star, User, Palette } from 'lucide-react-native';
 import { RootStackParamList } from '../../types/navigation';
 import { Colors } from '../../constants/Colors';
-import MapView, { Marker, UrlTile } from 'react-native-maps';
+import MapView, { Marker } from 'react-native-maps';
+import MapTileLayer from '../../components/MapTileLayer';
 import { apiRequest } from '../../services/backend';
 import { realtimeClient } from '../../services/realtimeClient';
 import { tripStatusService } from '../../services/tripStatusService';
@@ -346,12 +347,7 @@ export default function SearchingDriverScreen() {
                         longitudeDelta: 0.05,
                     }}
                 >
-                    <UrlTile
-                        urlTemplate={`https://api.mapbox.com/styles/v1/mapbox/streets-v12/tiles/256/{z}/{x}/{y}@2x?access_token=${MAPBOX_ACCESS_TOKEN}`}
-                        maximumZ={19}
-                        flipY={false}
-                        tileSize={256}
-                    />
+                    <MapTileLayer isDark={false} />
 
                     {trip && (
                         <>

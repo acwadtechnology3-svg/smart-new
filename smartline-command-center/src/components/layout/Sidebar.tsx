@@ -19,6 +19,8 @@ import {
   Zap,
   Bell,
   Image,
+  Navigation,
+  Activity,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -35,6 +37,7 @@ interface NavItem {
 
 const allNavigation: NavItem[] = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard, page: 'dashboard' },
+  { name: 'Live Map', href: '/live-map', icon: Navigation, page: 'dashboard' },
   { name: 'Driver Requests', href: '/driver-requests', icon: UserPlus, page: 'driver_requests' },
   { name: 'Vehicle Change Requests', href: '/vehicle-change-requests', icon: FileText, page: 'vehicle_change_requests' },
   { name: 'Withdrawal Requests', href: '/withdrawal-requests', icon: DollarSign, page: 'withdrawal_requests' },
@@ -49,6 +52,7 @@ const allNavigation: NavItem[] = [
   { name: 'Surge Zones', href: '/surge-zones', icon: Zap, page: 'surge_zones' },
   { name: 'Support', href: '/support', icon: HeadphonesIcon, page: 'support' },
   { name: 'Settings', href: '/settings', icon: Settings, page: 'settings' },
+  { name: 'System Monitoring', href: '/monitoring', icon: Activity, page: 'settings' }, // Visible to admins with settings access
 ];
 
 const getRoleColor = (role: DashboardRole) => {
