@@ -16,12 +16,14 @@ export type RootStackParamList = {
     SearchLocation: {
         selectedAddress?: string;
         selectedCoordinates?: { latitude: number; longitude: number };
+        selectionId?: number;
         field?: 'pickup' | 'destination';
         returnScreen?: keyof RootStackParamList; // Allows returning to any screen by name
         currentPickup?: any;
         currentDest?: any;
+        saveAs?: 'home' | 'work' | 'favorite';
     } | undefined;
-    LocationPicker: { field: 'pickup' | 'destination'; returnScreen?: keyof RootStackParamList; currentPickup?: any; currentDest?: any };
+    LocationPicker: { field: 'pickup' | 'destination'; returnScreen?: keyof RootStackParamList; currentPickup?: any; currentDest?: any; saveAs?: 'home' | 'work' | 'favorite' };
     TripOptions: { pickup: string; destination: string; destinationCoordinates?: [number, number]; preselectedRide?: string; pickupCoordinates?: [number, number]; autoRequest?: boolean };
     SearchingDriver: { tripId: string };
     DriverFound: { tripId: string; driver?: any };
@@ -37,9 +39,15 @@ export type RootStackParamList = {
     Chat: { driverName: string; tripId?: string; role?: 'customer' | 'driver' };
     Safety: { tripId?: string };
     Settings: undefined;
+    LocationPreferences: {
+        selectedAddress?: string;
+        selectedCoordinates?: { latitude: number; longitude: number };
+        selectionId?: number;
+        saveAs?: 'home' | 'work' | 'favorite';
+    } | undefined;
     PersonalInformation: undefined;
     InviteFriends: undefined;
-    Support: undefined;
+
     Profile: undefined;
     Scan: undefined;
     Appearance: undefined;

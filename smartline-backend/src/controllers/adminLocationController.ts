@@ -5,8 +5,16 @@ export const getLiveLocations = async (req: Request, res: Response) => {
     try {
         const { status, vehicleType, bounds, page = '1', limit = '100' } = req.query;
 
+        if (!adminLocationFeed.isRunning()) {
+            await adminLocationFeed.start();
+        }
+
         // 1. Get cached snapshot
         let drivers: DriverLocationSnapshot[] = await adminLocationFeed.getLatestSnapshot();
+        // Fallback: generate snapshot on demand if cache is empty/stale or feed is not running.
+        if (drivers.length === 0) {
+            drivers = await adminLocationFeed.generateSnapshot();
+        }
 
         // 2. Apply filters
         if (status) {

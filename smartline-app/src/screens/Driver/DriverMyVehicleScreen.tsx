@@ -149,7 +149,7 @@ export default function DriverMyVehicleScreen() {
                 <Button
                     title={t('requestVehicleChange')}
                     onPress={() => navigation.navigate('DriverChangeVehicle')}
-                    leftIcon={<PenTool size={20} color={colors.textOnPrimary} />}
+                    leftIcon={PenTool}
                     style={{ marginTop: spacing.l, marginBottom: spacing.xl }}
                 />
 

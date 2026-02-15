@@ -8,7 +8,7 @@ import { Colors } from '../../constants/Colors';
 import * as ImagePicker from 'expo-image-picker';
 import { supabase } from '../../lib/supabase';
 import { StatusBar } from 'expo-status-bar';
-import * as FileSystem from 'expo-file-system';
+import { readAsStringAsync } from 'expo-file-system/legacy';
 import { decode } from 'base64-arraybuffer';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useLanguage } from '../../context/LanguageContext';
@@ -36,6 +36,7 @@ export default function PersonalInformationScreen() {
     const [email, setEmail] = useState('');
     const [phone, setPhone] = useState('');
     const [photo, setPhoto] = useState<string | null>(null);
+    const [photoBase64, setPhotoBase64] = useState<string | null>(null);
     const [userId, setUserId] = useState<string | null>(null);
 
     // Initial data to check for changes
@@ -109,23 +110,36 @@ export default function PersonalInformationScreen() {
                 allowsEditing: true,
                 aspect: [1, 1],
                 quality: 0.5,
+                base64: true,
             });
 
             if (!result.canceled && result.assets && result.assets.length > 0) {
                 setPhoto(result.assets[0].uri);
+                setPhotoBase64(result.assets[0].base64 || null);
             }
         } catch (error) {
             Alert.alert('Error', 'Failed to pick image');
         }
     };
 
-    const uploadProfilePhoto = async (uri: string): Promise<string> => {
+    const uploadProfilePhoto = async (uri: string, pickedBase64?: string | null): Promise<string> => {
         try {
             if (!userId) throw new Error('User ID not found');
 
-            // Read file as Base64
-            const base64 = await FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
-            const arrayBuffer = decode(base64);
+            let arrayBuffer: ArrayBuffer;
+            if (pickedBase64) {
+                arrayBuffer = decode(pickedBase64);
+            } else {
+                try {
+                    const base64 = await readAsStringAsync(uri, { encoding: 'base64' });
+                    arrayBuffer = decode(base64);
+                } catch (_fileReadError) {
+                    // Some providers can return URIs that fail with base64 reader; fallback to fetch/blob.
+                    const response = await fetch(uri);
+                    const blob = await response.blob();
+                    arrayBuffer = await blob.arrayBuffer();
+                }
+            }
 
             // Use 'avatars' bucket, usually public
             // If it fails, fallback might be needed or ensure bucket exists
@@ -189,10 +203,10 @@ export default function PersonalInformationScreen() {
 
             // If photo changed and it's a local URI (not http), upload it
             if (photo && photo !== initialData.photo && !photo.startsWith('http')) {
-                profilePhotoUrl = await uploadProfilePhoto(photo);
+                profilePhotoUrl = await uploadProfilePhoto(photo, photoBase64);
             }
 
-            await apiRequest('/users/profile', {
+            const response = await apiRequest<{ success: boolean; user: any }>('/users/profile', {
                 method: 'PUT',
                 body: JSON.stringify({
                     full_name: fullName,
@@ -201,9 +215,25 @@ export default function PersonalInformationScreen() {
                 })
             });
 
+            const savedUser = response?.user;
+            const resolvedPhoto = savedUser?.profile_photo_url || profilePhotoUrl || null;
+
+            const session = await AsyncStorage.getItem('userSession');
+            if (session && savedUser) {
+                const parsed = JSON.parse(session);
+                await AsyncStorage.setItem('userSession', JSON.stringify({
+                    ...parsed,
+                    user: {
+                        ...parsed.user,
+                        ...savedUser
+                    }
+                }));
+            }
+
             Alert.alert("Success", "Profile updated successfully");
-            setInitialData({ fullName, email, photo: profilePhotoUrl || '' });
-            setPhoto(profilePhotoUrl); // Update local state with remote URL
+            setInitialData({ fullName, email, photo: resolvedPhoto || '' });
+            setPhoto(resolvedPhoto); // Update local state with remote URL
+            setPhotoBase64(null);
 
         } catch (error: any) {
             console.error('Failed to update profile:', error);

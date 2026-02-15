@@ -8,11 +8,12 @@ import { API_URL } from '../../config/api';
 import { ArrowLeft, Car, CloudLightning, CreditCard, Ticket, Clock, Star, BadgePercent, Wallet, X, MapPin } from 'lucide-react-native';
 import { RootStackParamList } from '../../types/navigation';
 import { Colors } from '../../constants/Colors';
+import { EMPTY_MAP_STYLE, DARK_EMPTY_MAP_STYLE } from '../../constants/MapStyles';
 import { LinearGradient } from 'expo-linear-gradient';
 import MapView, { Marker, Polyline } from 'react-native-maps';
 import MapTileLayer from '../../components/MapTileLayer';
 import * as Location from 'expo-location';
-import { getDirections } from '../../services/mapService';
+import { getDirections, reverseGeocode } from '../../services/mapService';
 import { apiRequest } from '../../services/backend';
 import { useLanguage } from '../../context/LanguageContext';
 import { useTheme } from '../../theme/useTheme';
@@ -44,7 +45,7 @@ export default function TripOptionsScreen() {
     const navigation = useNavigation<TripOptionsScreenNavigationProp>();
     const route = useRoute<TripOptionsScreenRouteProp>();
     const { pickup, destination, destinationCoordinates, autoRequest, pickupCoordinates } = route.params;
-    const { t, isRTL } = useLanguage();
+    const { t, isRTL, language } = useLanguage();
     const { colors, spacing, radius, shadow, isDark } = useTheme();
 
     // RTL Layout Logic
@@ -55,6 +56,7 @@ export default function TripOptionsScreen() {
     const backButtonStyle = isSimulating ? { right: 20 } : { left: 20 };
     const iconMargin = isRTL ? { marginLeft: 12, marginRight: 0 } : { marginRight: 12, marginLeft: 0 };
 
+    const [pickupAddress, setPickupAddress] = useState<string>(pickup);
     const [selectedRide, setSelectedRide] = useState('comfort');
     const [paymentMethod, setPaymentMethod] = useState<'Cash' | 'Wallet'>('Cash');
     const [showPaymentModal, setShowPaymentModal] = useState(false);
@@ -96,35 +98,47 @@ export default function TripOptionsScreen() {
         const initRoute = async (retryCount = 0) => {
             setRouteLoading(true);
             setRouteError(null);
+            setRouteCoords([]);
+            setRouteInfo(null);
+            setPickupCoords(null);
+            setDestCoords(null);
 
             try {
                 // 1. Get Pickup Coords
-                // 1. Get Pickup Coords
-                let pCoords = { latitude: 0, longitude: 0 };
+                let pCoords: { latitude: number; longitude: number } | null = null;
 
                 if (pickupCoordinates) {
                     pCoords = { latitude: pickupCoordinates[1], longitude: pickupCoordinates[0] };
-                } else if (pickup === 'Current Location' || !pickup) {
+                } else if (pickup === 'Current Location' || pickup === t('currentLocation') || !pickup) {
                     const { status } = await Location.requestForegroundPermissionsAsync();
                     if (status === 'granted') {
                         const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
                         pCoords = { latitude: loc.coords.latitude, longitude: loc.coords.longitude };
+
+                        // Reverse Geocode
+                        try {
+                            const address = await reverseGeocode(loc.coords.latitude, loc.coords.longitude, language as any);
+                            if (address) setPickupAddress(address);
+                        } catch (e) {
+                            console.log('Failed to reverse geocode current location', e);
+                        }
                     }
                 } else {
-                    // Try to geocode the address string if no coords provided
+                    // Try to geocode selected pickup address. Never fallback to current location.
                     try {
                         const geocoded = await Location.geocodeAsync(pickup);
                         if (geocoded.length > 0) {
                             pCoords = { latitude: geocoded[0].latitude, longitude: geocoded[0].longitude };
+                            setPickupAddress(pickup);
                         } else {
-                            // Fallback to current location if geocoding fails
-                            const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-                            pCoords = { latitude: loc.coords.latitude, longitude: loc.coords.longitude };
+                            throw new Error('PICKUP_GEOCODE_FAILED');
                         }
                     } catch (e) {
-                        const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-                        pCoords = { latitude: loc.coords.latitude, longitude: loc.coords.longitude };
+                        throw new Error('PICKUP_GEOCODE_FAILED');
                     }
+                }
+                if (!pCoords) {
+                    throw new Error('PICKUP_GEOCODE_FAILED');
                 }
                 setPickupCoords(pCoords);
 
@@ -180,14 +194,19 @@ export default function TripOptionsScreen() {
                 }
             } catch (err: any) {
                 console.error('[TripOptions] Route error:', err);
-                setRouteError('Failed to calculate route. Please try again.');
+                if (err?.message === 'PICKUP_GEOCODE_FAILED') {
+                    setPickupAddress(pickup);
+                    setRouteError('Could not resolve pickup location. Please reselect pickup.');
+                } else {
+                    setRouteError('Failed to calculate route. Please try again.');
+                }
             } finally {
                 setRouteLoading(false);
             }
         };
 
         initRoute();
-    }, [pickup, destination, destinationCoordinates]);
+    }, [pickup, pickupCoordinates, destination, destinationCoordinates, language, t]);
 
 
     const [pricingConfig, setPricingConfig] = useState<any[]>([]);
@@ -361,7 +380,7 @@ export default function TripOptionsScreen() {
                 pickup_lng: pickupCoords.longitude,
                 dest_lat: destCoords.latitude,
                 dest_lng: destCoords.longitude,
-                pickup_address: pickup,
+                pickup_address: pickupAddress || pickup,
                 dest_address: destination,
                 price: selectedRideData.price,
                 distance: routeInfo.distance,
@@ -396,12 +415,16 @@ export default function TripOptionsScreen() {
             {/* --- REAL MAP LAYER --- */}
             <View style={styles.mapLayer}>
                 <MapView
+                    key={`trip-options-map-${isDark ? 'dark' : 'light'}`}
                     ref={mapRef}
-                    style={StyleSheet.absoluteFill}
+                    style={[StyleSheet.absoluteFill, { backgroundColor: isDark ? '#212121' : '#f5f5f5' }]}
                     initialRegion={{
                         latitude: 30.0444, longitude: 31.2357,
                         latitudeDelta: 0.1, longitudeDelta: 0.1
                     }}
+                    mapType={Platform.OS === 'android' ? 'none' : 'standard'}
+                    customMapStyle={isDark ? DARK_EMPTY_MAP_STYLE : EMPTY_MAP_STYLE}
+                    userInterfaceStyle={isDark ? 'dark' : 'light'}
                 >
 
                     <MapTileLayer isDark={isDark} />
@@ -455,7 +478,7 @@ export default function TripOptionsScreen() {
                 <View style={[styles.routeInfo, { flexDirection: 'column' }]}>
                     <View style={[styles.routeNode, { flexDirection }]}>
                         <View style={[styles.dot, { backgroundColor: '#10B981' }, iconMargin]} />
-                        <Text variant="body" weight="bold" style={[styles.addressText, { textAlign, color: colors.textPrimary }]} numberOfLines={1}>{pickup || t('currentLocation')}</Text>
+                        <Text variant="body" weight="bold" style={[styles.addressText, { textAlign, color: colors.textPrimary }]} numberOfLines={1}>{pickupAddress || t('currentLocation')}</Text>
                     </View>
                     <View style={[styles.verticalLineWrapper, { alignItems: isRTL ? 'flex-end' : 'flex-start', paddingRight: isRTL ? 7.5 : 0, paddingLeft: isRTL ? 0 : 4.5 }]}>
                         <View style={[styles.verticalLine, { backgroundColor: colors.border }]} />
@@ -487,12 +510,26 @@ export default function TripOptionsScreen() {
                             key={ride.id}
                             style={[
                                 styles.rideCard,
-                                selectedRide === ride.id && { borderColor: colors.primary, backgroundColor: isDark ? 'rgba(59, 130, 246, 0.1)' : '#F0F9FF' },
-                                { flexDirection, backgroundColor: colors.background, borderColor: colors.border, shadowColor: colors.shadow }
+                                { flexDirection, backgroundColor: colors.background, borderColor: colors.border, shadowColor: colors.shadow },
+                                selectedRide === ride.id && { borderColor: colors.primary, borderWidth: 2 }
                             ]}
                             onPress={() => setSelectedRide(ride.id)}
                             activeOpacity={0.9}
                         >
+                            {/* Selection Indicator */}
+                            <View style={[
+                                {
+                                    width: 20, height: 20, borderRadius: 10, borderWidth: 2,
+                                    alignItems: 'center', justifyContent: 'center',
+                                    borderColor: selectedRide === ride.id ? colors.primary : colors.border
+                                },
+                                isRTL ? { marginLeft: 12 } : { marginRight: 12 }
+                            ]}>
+                                {selectedRide === ride.id && (
+                                    <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: colors.primary }} />
+                                )}
+                            </View>
+
                             {/* Icon Section */}
                             <View style={[styles.rideIconWrapper, isRTL ? { marginLeft: 8 } : { marginRight: 8 }]}>
                                 <Image source={ride.image} style={styles.rideImage} resizeMode="contain" />
@@ -760,12 +797,12 @@ const styles = StyleSheet.create({
         flexDirection: 'row', alignItems: 'center',
         paddingVertical: 16, paddingHorizontal: 16,
         borderRadius: 16, marginBottom: 12,
-        borderWidth: 1.5, borderColor: '#F3F4F6', backgroundColor: '#fff'
+        borderWidth: 1.5, borderColor: '#F3F4F6', // Removed backgroundColor: '#fff' to rely on theme
     },
     rideCardSelected: { borderColor: Colors.primary, backgroundColor: '#F0F9FF' },
 
-    rideIconWrapper: { width: 110, height: 75, alignItems: 'center', justifyContent: 'center', marginRight: 8 },
-    rideImage: { width: '100%', height: '100%' },
+    rideIconWrapper: { width: 110, height: 75, alignItems: 'center', justifyContent: 'center', marginRight: 8, backgroundColor: 'transparent' },
+    rideImage: { width: '100%', height: '100%', backgroundColor: 'transparent' },
 
     rideInfo: { flex: 1 },
     rideName: { fontSize: 18, fontWeight: 'bold', color: '#1e1e1e' },

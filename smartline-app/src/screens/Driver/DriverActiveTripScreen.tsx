@@ -3,6 +3,7 @@ import { View, StyleSheet, TouchableOpacity, Dimensions, Alert, ActivityIndicato
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { RootStackParamList } from '../../types/navigation';
 import { Colors } from '../../constants/Colors';
+import { EMPTY_MAP_STYLE, DARK_EMPTY_MAP_STYLE } from '../../constants/MapStyles';
 import { Phone, MessageSquare, Navigation } from 'lucide-react-native';
 import MapView, { Marker, Polyline } from 'react-native-maps';
 import MapTileLayer from '../../components/MapTileLayer';
@@ -217,7 +218,7 @@ export default function DriverActiveTripScreen() {
                 }
             }
         } catch (error: any) {
-            Alert.alert(t('error'), "Failed to update status.");
+            Alert.alert(t('error'), error?.message || "Failed to update status.");
         }
     };
 
@@ -301,14 +302,18 @@ export default function DriverActiveTripScreen() {
                 </TouchableOpacity>
             </View>
             <MapView
+                key={`driver-active-trip-map-${isDark ? 'dark' : 'light'}`}
                 ref={mapRef}
-                style={styles.map}
+                style={[styles.map, { backgroundColor: isDark ? '#212121' : '#f5f5f5' }]}
                 initialRegion={{
                     latitude: driverLoc?.latitude || trip.pickup_lat,
                     longitude: driverLoc?.longitude || trip.pickup_lng,
                     latitudeDelta: 0.01,
                     longitudeDelta: 0.01
                 }}
+                mapType={Platform.OS === 'android' ? 'none' : 'standard'}
+                customMapStyle={isDark ? DARK_EMPTY_MAP_STYLE : EMPTY_MAP_STYLE}
+                userInterfaceStyle={isDark ? 'dark' : 'light'}
             >
                 <MapTileLayer isDark={isDark} useNavStyle />
                 {driverLoc && (

@@ -17,10 +17,10 @@ const logMapboxUsage = (endpoint: string, details: string) => {
  * Forward Geocoding (Search for a place)
  * API Billing: Geocoding API (1 request per call)
  */
-export const searchPlaces = async (query: string, proximity?: [number, number], types?: string) => {
+export const searchPlaces = async (query: string, proximity?: [number, number], types?: string, language: 'en' | 'ar' = 'en') => {
     logMapboxUsage('geocoding', 'forward_search');
     try {
-        let url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?access_token=${MAPBOX_ACCESS_TOKEN}&country=EG&autocomplete=true&limit=10`;
+        let url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?access_token=${MAPBOX_ACCESS_TOKEN}&country=EG&autocomplete=true&limit=10&language=${language}`;
 
         if (proximity) {
             url += `&proximity=${proximity[0]},${proximity[1]}`;

@@ -1,5 +1,5 @@
 import React, { createContext, useState, useEffect, useCallback, useMemo, ReactNode } from 'react';
-import { Platform, ViewStyle, useColorScheme as _useColorScheme, Appearance } from 'react-native';
+import { Appearance, ViewStyle } from 'react-native';
 import { storage } from '../utils/storage';
 import { lightColors, darkColors, ThemeColors } from './palettes';
 import * as tokens from './tokens';
@@ -41,9 +41,21 @@ interface ThemeProviderProps {
 }
 
 export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
-    const systemScheme = _useColorScheme();
+    const [systemScheme, setSystemScheme] = useState<'light' | 'dark'>(
+        Appearance.getColorScheme() === 'dark' ? 'dark' : 'light'
+    );
     const [mode, setModeState] = useState<ThemeMode>('system');
     const [isReady, setIsReady] = useState(false);
+
+    useEffect(() => {
+        const subscription = Appearance.addChangeListener(({ colorScheme }) => {
+            setSystemScheme(colorScheme === 'dark' ? 'dark' : 'light');
+        });
+
+        return () => {
+            subscription.remove();
+        };
+    }, []);
 
     useEffect(() => {
         // Load stored theme preference
@@ -63,7 +75,7 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
     }, []);
 
     const resolvedScheme = mode === 'system'
-        ? (systemScheme || 'light')
+        ? systemScheme
         : mode;
 
     const isDark = resolvedScheme === 'dark';

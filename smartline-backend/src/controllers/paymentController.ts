@@ -385,7 +385,11 @@ async function processSuccessfulPayment(orderId: string, transactionId?: string)
 
     const newBalance = (user?.balance || 0) + tx.amount;
 
-    await supabase.from('users').update({ balance: newBalance }).eq('id', tx.user_id);
+    const { error: updateError } = await supabase.from('users').update({ balance: newBalance }).eq('id', tx.user_id);
+
+    if (updateError) {
+        throw new Error(`Failed to update user balance: ${updateError.message}`);
+    }
 
     // Mark Transaction Complete - store Kashier ref for refund lookups
     await supabase.from('wallet_transactions').update({
@@ -557,7 +561,19 @@ export const manageWithdrawal = async (req: Request, res: Response) => {
 
             // Deduct from wallet balance regardless (admin manually approved)
             const newBalance = (user.balance || 0) - request.amount;
-            await supabase.from('users').update({ balance: newBalance }).eq('id', request.driver_id);
+            const { error: updateError } = await supabase.from('users').update({ balance: newBalance }).eq('id', request.driver_id);
+
+            if (updateError) {
+                // If we refunded via kashier succesffully but failed to update balance, log critical error
+                if (refundSuccess) {
+                    console.error('CRITICAL: Kashier refund succeeded but user balance update failed!', {
+                        userId: request.driver_id,
+                        amount: request.amount,
+                        error: updateError
+                    });
+                }
+                throw new Error(`Failed to update driver balance: ${updateError.message}`);
+            }
 
             // Transaction Record
             await supabase.from('wallet_transactions').insert({

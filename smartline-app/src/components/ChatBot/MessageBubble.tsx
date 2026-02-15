@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Colors } from '../../constants/Colors';
 import { useLanguage } from '../../context/LanguageContext';
+import { useTheme } from '../../theme/useTheme';
 
 interface MessageBubbleProps {
     role: 'bot' | 'user';
@@ -11,6 +12,7 @@ interface MessageBubbleProps {
 
 export default function MessageBubble({ role, text, timestamp }: MessageBubbleProps) {
     const { isRTL } = useLanguage();
+    const { colors, isDark } = useTheme();
     const isBot = role === 'bot';
 
     // Check if this is a trip summary message
@@ -33,6 +35,12 @@ export default function MessageBubble({ role, text, timestamp }: MessageBubblePr
                 styles.bubble,
                 isBot ? styles.botBubble : styles.userBubble,
                 isTripSummary && styles.tripSummaryBubble,
+                isBot && { backgroundColor: isDark ? colors.surface2 : '#EFF6FF' },
+                !isBot && { backgroundColor: colors.primary },
+                isTripSummary && {
+                    backgroundColor: isDark ? colors.surface2 : '#F0F9FF',
+                    borderColor: isDark ? colors.border : '#BFDBFE',
+                },
                 { alignSelf: isBot ? (isRTL ? 'flex-end' : 'flex-start') : (isRTL ? 'flex-start' : 'flex-end') }
             ]}>
                 {lines.map((line, index) => {
@@ -63,6 +71,10 @@ export default function MessageBubble({ role, text, timestamp }: MessageBubblePr
                                 isBot ? styles.botText : styles.userText,
                                 isHeader && styles.headerText,
                                 isKeyInfo && styles.keyInfoText,
+                                isBot && { color: colors.textPrimary },
+                                !isBot && { color: colors.textOnPrimary },
+                                isHeader && { color: colors.textPrimary },
+                                isKeyInfo && { color: colors.textPrimary },
                                 { textAlign: isRTL ? 'right' : 'left' }
                             ]}
                         >
@@ -71,7 +83,13 @@ export default function MessageBubble({ role, text, timestamp }: MessageBubblePr
                     );
                 })}
 
-                <Text style={[styles.timestamp, isBot ? styles.botTimestamp : styles.userTimestamp]}>
+                <Text
+                    style={[
+                        styles.timestamp,
+                        isBot ? styles.botTimestamp : styles.userTimestamp,
+                        isBot ? { color: colors.textMuted } : { color: colors.textOnPrimary, opacity: 0.85 },
+                    ]}
+                >
                     {timestamp.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}
                 </Text>
             </View>

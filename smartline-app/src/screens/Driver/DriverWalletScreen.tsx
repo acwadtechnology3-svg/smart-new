@@ -16,7 +16,7 @@ import { Input } from '../../components/ui/Input';
 
 const BACKEND_URL = Constants.expoConfig?.hostUri
     ? `http://${Constants.expoConfig.hostUri.split(':').shift()}:3000/api`
-    : 'http://192.168.1.10:3000/api';
+    : 'http://192.168.8.103:3000/api';
 
 export default function DriverWalletScreen() {
     const navigation = useNavigation();

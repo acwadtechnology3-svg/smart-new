@@ -7,11 +7,13 @@ import {
     View,
     Dimensions,
     StyleProp,
-    ViewStyle
+    ViewStyle,
+    Image
 } from 'react-native';
 import { MessageCircle } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors } from '../../constants/Colors';
+import { useTheme } from '../../theme/useTheme';
 
 interface ChatBotButtonProps {
     onPress: () => void;
@@ -24,6 +26,7 @@ const BUTTON_SIZE = 70;
 const EDGE_PADDING = 16;
 
 export default function ChatBotButton({ onPress, disableDrag = false, style }: ChatBotButtonProps) {
+    const { colors, isDark } = useTheme();
     const initialPosition = {
         x: SCREEN_WIDTH - BUTTON_SIZE - EDGE_PADDING,
         y: SCREEN_HEIGHT - BUTTON_SIZE - 180,
@@ -108,67 +111,34 @@ export default function ChatBotButton({ onPress, disableDrag = false, style }: C
         ]
     };
 
+    const gradientColors: [string, string] = isDark
+        ? ['#1E40AF', colors.primary]
+        : ['#2563EB', Colors.primary];
+
     return (
         <Animated.View
             {...(disableDrag ? {} : panResponder.panHandlers)}
             style={[
                 styles.container,
+                { shadowColor: 'transparent', shadowOpacity: 0, elevation: 0 },
                 style,
                 animatedStyle
             ]}
         >
             {disableDrag && (
                 <View style={{ flex: 1 }} onTouchEnd={onPress}>
-                    <LinearGradient
-                        colors={['#2563EB', Colors.primary]}
-                        style={styles.gradient}
-                        start={{ x: 0, y: 0 }}
-                        end={{ x: 1, y: 1 }}
-                    >
-                        <View style={styles.wave}>
-                            <Animated.View
-                                style={{
-                                    width: 60,
-                                    height: 60,
-                                    borderRadius: 30,
-                                    borderWidth: 1,
-                                    borderColor: 'rgba(255,255,255,0.2)',
-                                }}
-                            />
-                        </View>
-                        <MessageCircle size={26} color="#FFFFFF" fill="#FFFFFF" />
-                        <Text style={styles.label}>Help</Text>
-                        <View style={styles.badge}>
-                            <Text style={styles.badgeText}>AI</Text>
-                        </View>
-                    </LinearGradient>
+                    <Image
+                        source={require('../../../assets/images/chatbot_icon.png')}
+                        style={{ width: '100%', height: '100%', resizeMode: 'contain', transform: [{ scale: 2 }, { translateX: -4 }] }}
+                    />
                 </View>
             )}
 
             {!disableDrag && (
-                <LinearGradient
-                    colors={['#2563EB', Colors.primary]}
-                    style={styles.gradient}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                >
-                    <View style={styles.wave}>
-                        <Animated.View
-                            style={{
-                                width: 60,
-                                height: 60,
-                                borderRadius: 30,
-                                borderWidth: 1,
-                                borderColor: 'rgba(255,255,255,0.2)',
-                            }}
-                        />
-                    </View>
-                    <MessageCircle size={26} color="#FFFFFF" fill="#FFFFFF" />
-                    <Text style={styles.label}>Help</Text>
-                    <View style={styles.badge}>
-                        <Text style={styles.badgeText}>AI</Text>
-                    </View>
-                </LinearGradient>
+                <Image
+                    source={require('../../../assets/images/chatbot_icon.png')}
+                    style={{ width: '100%', height: '100%', resizeMode: 'contain', transform: [{ scale: 2 }, { translateX: -4 }] }}
+                />
             )}
         </Animated.View>
     );

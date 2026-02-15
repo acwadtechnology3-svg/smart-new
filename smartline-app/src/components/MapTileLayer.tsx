@@ -1,5 +1,4 @@
 import React, { memo } from 'react';
-import { Platform } from 'react-native';
 import { UrlTile } from 'react-native-maps';
 
 const MAPBOX_TOKEN = process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN || '';

@@ -1,13 +1,93 @@
 import { Request, Response } from 'express';
 import { supabase } from '../config/supabase';
 
+function normalizeVehicleType(value: unknown): string {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, '_');
+}
+
+const CAR_DRIVER_TYPES = new Set(['car', 'saver', 'comfort', 'vip', 'sedan', 'hatchback', 'suv', 'van']);
+const SCOOTER_DRIVER_TYPES = new Set(['scooter', 'motorcycle', 'bike', 'motorbike', 'moto']);
+const TAXI_DRIVER_TYPES = new Set(['taxi']);
+
+function isTripDriverTypeCompatible(tripTypeRaw: unknown, driverTypeRaw: unknown): boolean {
+  const tripType = normalizeVehicleType(tripTypeRaw);
+  const driverType = normalizeVehicleType(driverTypeRaw);
+
+  if (!tripType || !driverType) return true;
+
+  if (tripType === 'saver' || tripType === 'comfort' || tripType === 'vip' || tripType === 'car') {
+    return CAR_DRIVER_TYPES.has(driverType);
+  }
+  if (tripType === 'scooter' || tripType === 'motorcycle' || tripType === 'bike') {
+    return SCOOTER_DRIVER_TYPES.has(driverType);
+  }
+  if (tripType === 'taxi') {
+    return TAXI_DRIVER_TYPES.has(driverType);
+  }
+
+  return tripType === driverType;
+}
+
 export const createTripOffer = async (req: Request, res: Response) => {
   try {
     const driverId = req.user!.id;
     const { tripId, offerPrice } = req.body;
 
-    if (!tripId || !offerPrice) {
+    if (!tripId || offerPrice === undefined || offerPrice === null) {
       return res.status(400).json({ error: 'Missing tripId or offerPrice' });
+    }
+
+    const parsedOfferPrice = Number(offerPrice);
+    if (!Number.isFinite(parsedOfferPrice) || parsedOfferPrice <= 0) {
+      return res.status(400).json({ error: 'Invalid offerPrice' });
+    }
+
+    const { data: trip, error: tripError } = await supabase
+      .from('trips')
+      .select('id, status, car_type')
+      .eq('id', tripId)
+      .single();
+
+    if (tripError || !trip) {
+      return res.status(404).json({ error: 'Trip not found' });
+    }
+
+    if (trip.status !== 'requested') {
+      return res.status(409).json({ error: 'Trip is no longer available' });
+    }
+
+    const { data: driver, error: driverError } = await supabase
+      .from('drivers')
+      .select('vehicle_type, status, is_online')
+      .eq('id', driverId)
+      .single();
+
+    if (driverError || !driver) {
+      return res.status(403).json({ error: 'Driver profile not found' });
+    }
+
+    if (driver.status !== 'approved' || !driver.is_online) {
+      return res.status(403).json({ error: 'Driver is not eligible to receive offers' });
+    }
+
+    if (!isTripDriverTypeCompatible(trip.car_type, driver.vehicle_type)) {
+      return res.status(403).json({ error: 'This trip category does not match your vehicle type' });
+    }
+
+    const { data: existingOffer } = await supabase
+      .from('trip_offers')
+      .select('id, trip_id, driver_id, offer_price, status, created_at')
+      .eq('trip_id', tripId)
+      .eq('driver_id', driverId)
+      .in('status', ['pending', 'accepted'])
+      .limit(1)
+      .maybeSingle();
+
+    if (existingOffer) {
+      return res.status(200).json({ offer: existingOffer, duplicate: true });
     }
 
     const { data, error } = await supabase
@@ -15,7 +95,7 @@ export const createTripOffer = async (req: Request, res: Response) => {
       .insert({
         trip_id: tripId,
         driver_id: driverId,
-        offer_price: offerPrice,
+        offer_price: parsedOfferPrice,
         status: 'pending',
       })
       .select()

@@ -17,6 +17,90 @@ function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: numbe
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     return parseFloat((R * c).toFixed(2));
 }
+
+async function filterDriversByVehicleType(driverIds: string[], vehicleType?: string): Promise<string[]> {
+    if (!driverIds.length) return [];
+    if (!vehicleType) return driverIds;
+
+    const { data: candidates, error } = await supabase
+        .from('drivers')
+        .select('id, vehicle_type')
+        .in('id', driverIds)
+        .eq('status', 'approved')
+        .eq('is_online', true);
+
+    if (error) {
+        console.error('[Trip Filter] Failed to filter drivers by vehicle type:', error);
+        // Fail-open so dispatch does not black-hole during transient DB issues.
+        return driverIds;
+    }
+
+    const filtered = (candidates || []).filter((driver: any) =>
+        isTripDriverTypeCompatible(vehicleType, driver.vehicle_type)
+    );
+
+    return filtered.map((d: any) => d.id);
+}
+
+function normalizePaymentMethod(value: unknown): string {
+    return String(value || '').trim().toLowerCase();
+}
+
+function normalizeVehicleType(value: unknown): string {
+    return String(value || '')
+        .trim()
+        .toLowerCase()
+        .replace(/[\s-]+/g, '_');
+}
+
+const CAR_DRIVER_TYPES = new Set(['car', 'saver', 'comfort', 'vip', 'sedan', 'hatchback', 'suv', 'van']);
+const SCOOTER_DRIVER_TYPES = new Set(['scooter', 'motorcycle', 'bike', 'motorbike', 'moto']);
+const TAXI_DRIVER_TYPES = new Set(['taxi']);
+
+function getCompatibleDriverTypesForTrip(tripTypeRaw: unknown): Set<string> | null {
+    const tripType = normalizeVehicleType(tripTypeRaw);
+    if (!tripType) return null;
+
+    if (tripType === 'saver' || tripType === 'comfort' || tripType === 'vip' || tripType === 'car') {
+        return CAR_DRIVER_TYPES;
+    }
+    if (tripType === 'scooter' || tripType === 'motorcycle' || tripType === 'bike') {
+        return SCOOTER_DRIVER_TYPES;
+    }
+    if (tripType === 'taxi') {
+        return TAXI_DRIVER_TYPES;
+    }
+    return null;
+}
+
+function getCompatibleTripTypesForDriver(driverTypeRaw: unknown): string[] | null {
+    const driverType = normalizeVehicleType(driverTypeRaw);
+    if (!driverType) return null;
+
+    if (CAR_DRIVER_TYPES.has(driverType)) return ['saver', 'comfort', 'vip'];
+    if (SCOOTER_DRIVER_TYPES.has(driverType)) return ['scooter'];
+    if (TAXI_DRIVER_TYPES.has(driverType)) return ['taxi'];
+    return [driverType];
+}
+
+function isTripDriverTypeCompatible(tripTypeRaw: unknown, driverTypeRaw: unknown): boolean {
+    const tripType = normalizeVehicleType(tripTypeRaw);
+    const driverType = normalizeVehicleType(driverTypeRaw);
+
+    if (!tripType || !driverType) return true;
+
+    const compatibleDriverTypes = getCompatibleDriverTypesForTrip(tripType);
+    if (compatibleDriverTypes) {
+        return compatibleDriverTypes.has(driverType);
+    }
+
+    return tripType === driverType;
+}
+
+function roundMoney(value: number): number {
+    return Number(value.toFixed(2));
+}
+
 async function getTripById(tripId: string) {
     const { data, error } = await supabase
         .from('trips')
@@ -104,6 +188,34 @@ export const createTrip = async (req: Request, res: Response) => {
         if (!customerId || !pickup_lat || !dest_lat || price === undefined) {
             return res.status(400).json({ error: 'Missing required fields' });
         }
+        const requestedPrice = Number(price);
+        if (!Number.isFinite(requestedPrice) || requestedPrice <= 0) {
+            return res.status(400).json({ error: 'Invalid trip price' });
+        }
+        const normalizedPaymentMethod = normalizePaymentMethod(payment_method);
+
+        // Wallet payment guard: customer must have enough balance to request with wallet.
+        if (normalizedPaymentMethod === 'wallet') {
+            const { data: customerWallet, error: customerWalletError } = await supabase
+                .from('users')
+                .select('balance')
+                .eq('id', customerId)
+                .single();
+
+            if (customerWalletError) {
+                console.error('[Trip] Failed to load customer wallet on create:', customerWalletError);
+                return res.status(500).json({ error: 'Failed to verify wallet balance' });
+            }
+
+            const currentBalance = Number(customerWallet?.balance || 0);
+            if (currentBalance < requestedPrice) {
+                return res.status(400).json({
+                    error: 'Insufficient wallet balance',
+                    current_balance: currentBalance,
+                    required_amount: requestedPrice
+                });
+            }
+        }
 
         let promoId = null;
         let discountAmount = 0;
@@ -164,11 +276,11 @@ export const createTrip = async (req: Request, res: Response) => {
                 dest_lng,
                 pickup_address,
                 dest_address,
-                price,
+                price: requestedPrice,
                 distance: finalDistance,
                 duration: finalDuration,
                 car_type,
-                payment_method,
+                payment_method: normalizedPaymentMethod || payment_method,
                 status: is_travel_request ? 'requested' : 'requested', // Both start as requested
                 promo_code: promoId ? promo_code : null,
                 promo_id: promoId,
@@ -229,15 +341,16 @@ export const createTrip = async (req: Request, res: Response) => {
             };
 
             const nearby = await locationCache.getNearbyDrivers(parseFloat(pickup_lat), parseFloat(pickup_lng), 5, 100);
-            const targetIds = nearby.map(d => d.driverId);
+            const nearbyIds = nearby.map(d => d.driverId);
+            const targetIds = await filterDriversByVehicleType(nearbyIds, car_type);
 
             if (targetIds.length > 0) {
                 notifyDrivers(targetIds, 'INSERT', broadcastPayload);
                 // Emit via new Socket.IO system
                 socketServer.emitTripToNearbyDrivers(broadcastPayload, targetIds);
-                console.log(`[Trip Broadcast] Sent request to ${targetIds.length} drivers within 5km.`);
+                console.log(`[Trip Broadcast] Sent ${car_type || 'any'} request to ${targetIds.length} matching drivers within 5km.`);
             } else {
-                console.log(`[Trip Broadcast] No online drivers found within 5km.`);
+                console.log(`[Trip Broadcast] No matching ${car_type || 'vehicle'} drivers found within 5km.`);
             }
         }
 
@@ -267,6 +380,10 @@ export const getTripStatus = async (req: Request, res: Response) => {
 export const acceptTripOffer = async (req: Request, res: Response) => {
     try {
         const { tripId, offerId, driverId, finalPrice } = req.body;
+        const acceptedPrice = Number(finalPrice);
+        if (!Number.isFinite(acceptedPrice) || acceptedPrice <= 0) {
+            return res.status(400).json({ error: 'Invalid final price' });
+        }
 
         const trip = await getTripById(tripId as string);
         if (trip.customer_id !== req.user!.id) {
@@ -281,12 +398,34 @@ export const acceptTripOffer = async (req: Request, res: Response) => {
             return res.status(409).json({ error: 'Trip already assigned to another driver' });
         }
 
+        if (normalizePaymentMethod(trip.payment_method) === 'wallet') {
+            const { data: customerWallet, error: customerWalletError } = await supabase
+                .from('users')
+                .select('balance')
+                .eq('id', trip.customer_id)
+                .single();
+
+            if (customerWalletError) {
+                console.error('[Trip] Failed to load customer wallet on accept:', customerWalletError);
+                return res.status(500).json({ error: 'Failed to verify wallet balance' });
+            }
+
+            const currentBalance = Number(customerWallet?.balance || 0);
+            if (currentBalance < acceptedPrice) {
+                return res.status(400).json({
+                    error: 'Insufficient wallet balance for this offer',
+                    current_balance: currentBalance,
+                    required_amount: acceptedPrice
+                });
+            }
+        }
+
         // 1. Update the Trip with optimistic locking
         const { data: updatedTrip, error: tripError } = await supabase
             .from('trips')
             .update({
                 driver_id: driverId,
-                price: finalPrice,
+                price: acceptedPrice,
                 status: 'accepted'
             })
             .eq('id', tripId)
@@ -417,11 +556,13 @@ export const updateTripStatus = async (req: Request, res: Response) => {
 
             updates.waiting_cost = waitingFee;
 
-            const finalPrice = (tripData.final_price || tripData.price) + waitingFee;
+            const baseTripPrice = Number(tripData.final_price || tripData.price || 0);
+            const finalPrice = roundMoney(baseTripPrice + waitingFee);
             updates.final_price = finalPrice;
 
-            const platformFee = finalPrice * commissionRate;
-            const driverEarnings = finalPrice - platformFee;
+            const platformFee = roundMoney(finalPrice * commissionRate);
+            const driverEarnings = roundMoney(finalPrice - platformFee);
+            const normalizedPaymentMethod = normalizePaymentMethod(tripData.payment_method);
 
             console.log('\n==========================================');
             console.log('🏁 TRIP COMPLETED: FINANCIAL SUMMARY');
@@ -438,6 +579,76 @@ export const updateTripStatus = async (req: Request, res: Response) => {
             console.log(`🏦 App Revenue:      ${platformFee.toFixed(2)} EGP`);
             console.log(`👨‍✈️ Driver Net:       ${driverEarnings.toFixed(2)} EGP`);
             console.log('==========================================\n');
+
+            // Wallet payment: deduct fare from customer's wallet exactly once.
+            if (normalizedPaymentMethod === 'wallet') {
+                const customerId = tripData.customer_id;
+                if (!customerId) {
+                    return res.status(400).json({ error: 'Missing customer for wallet payment' });
+                }
+
+                const { data: existingCustomerPayment } = await supabase
+                    .from('wallet_transactions')
+                    .select('id')
+                    .eq('user_id', customerId)
+                    .eq('trip_id', tripId)
+                    .eq('type', 'payment')
+                    .eq('status', 'completed')
+                    .limit(1)
+                    .maybeSingle();
+
+                if (!existingCustomerPayment) {
+                    const { data: customerWallet, error: customerWalletError } = await supabase
+                        .from('users')
+                        .select('balance')
+                        .eq('id', customerId)
+                        .single();
+
+                    if (customerWalletError) {
+                        console.error('Failed to fetch customer wallet:', customerWalletError);
+                        return res.status(500).json({ error: 'Failed to fetch customer wallet' });
+                    }
+
+                    const customerBalance = Number(customerWallet?.balance || 0);
+                    if (customerBalance < finalPrice) {
+                        return res.status(400).json({
+                            error: 'Customer wallet balance is insufficient to complete trip',
+                            code: 'INSUFFICIENT_WALLET_BALANCE',
+                            current_balance: customerBalance,
+                            required_amount: finalPrice
+                        });
+                    }
+
+                    const newCustomerBalance = roundMoney(customerBalance - finalPrice);
+                    const { error: customerBalanceUpdateError } = await supabase
+                        .from('users')
+                        .update({ balance: newCustomerBalance })
+                        .eq('id', customerId);
+
+                    if (customerBalanceUpdateError) {
+                        console.error('Failed to deduct customer wallet:', customerBalanceUpdateError);
+                        return res.status(500).json({ error: 'Failed to charge customer wallet' });
+                    }
+
+                    const { error: customerTxError } = await supabase
+                        .from('wallet_transactions')
+                        .insert({
+                            user_id: customerId,
+                            amount: -finalPrice,
+                            type: 'payment',
+                            status: 'completed',
+                            trip_id: tripId
+                        });
+
+                    if (customerTxError) {
+                        console.error('Failed to log customer wallet payment transaction:', customerTxError);
+                    } else {
+                        console.log(`✅ Customer ${customerId} charged ${finalPrice} EGP from wallet`);
+                    }
+                } else {
+                    console.log(`[Billing] Wallet charge already recorded for trip ${tripId}, skipping duplicate charge`);
+                }
+            }
 
             // 2. Update Driver Balance
             console.log(`Processing Balance Update for Driver: ${driverId}`);
@@ -456,7 +667,7 @@ export const updateTripStatus = async (req: Request, res: Response) => {
                 let amountChange = 0;
                 let transactionType = 'payment';
 
-                if (tripData.payment_method === 'cash') {
+                if (normalizedPaymentMethod === 'cash') {
                     // Cash: Driver collected money, we deduct platform fee
                     amountChange = -platformFee;
                     transactionType = 'payment';
@@ -582,8 +793,7 @@ export const getTripParticipants = async (req: Request, res: Response) => {
         const participants = await assertTripParticipant(tripId, req.user!.id);
         res.json({ participants });
     } catch (err: any) {
-        const status = err.message === 'Not authorized' ? 403 : 500;
-        res.status(status).json({ error: err.message });
+        res.status(500).json({ error: err.message });
     }
 };
 
@@ -604,6 +814,22 @@ export const getDriverTripHistory = async (req: Request, res: Response) => {
     }
 };
 
+export const getPassengerTripHistory = async (req: Request, res: Response) => {
+    try {
+        const userId = req.user!.id;
+        const { data, error } = await supabase
+            .from('trips')
+            .select('*')
+            .eq('customer_id', userId)
+            .order('created_at', { ascending: false });
+
+        if (error) throw error;
+
+        res.json({ trips: data || [] });
+    } catch (err: any) {
+        res.status(500).json({ error: err.message });
+    }
+};
 
 export const getActiveTrip = async (req: Request, res: Response) => {
     try {
@@ -617,7 +843,11 @@ export const getActiveTrip = async (req: Request, res: Response) => {
             .limit(1)
             .single();
 
-        if (error || !data) {
+        if (error && error.code !== 'PGRST116') {
+            throw error;
+        }
+        
+        if (!data) {
             return res.status(404).json({ error: 'No active trip found' });
         }
 
@@ -630,15 +860,35 @@ export const getActiveTrip = async (req: Request, res: Response) => {
 export const getRequestedTrips = async (req: Request, res: Response) => {
     try {
         const driverId = req.user?.id;
+        let driverVehicleType: string | null = null;
+        let compatibleTripTypes: string[] | null = null;
+
+        if (driverId) {
+            const { data: driver, error: driverError } = await supabase
+                .from('drivers')
+                .select('vehicle_type')
+                .eq('id', driverId)
+                .single();
+
+            if (!driverError && driver?.vehicle_type) {
+                driverVehicleType = driver.vehicle_type;
+                compatibleTripTypes = getCompatibleTripTypesForDriver(driver.vehicle_type);
+            }
+        }
 
         // 1. Fetch requested trips from DB
-        const { data: trips, error } = await supabase
+        let tripsQuery = supabase
             .from('trips')
             .select('*')
             .eq('status', 'requested')
             .eq('is_travel_request', false) // City trips only
-            .order('created_at', { ascending: false })
-            .limit(100);
+            .order('created_at', { ascending: false });
+
+        if (compatibleTripTypes && compatibleTripTypes.length > 0) {
+            tripsQuery = tripsQuery.in('car_type', compatibleTripTypes);
+        }
+
+        const { data: trips, error } = await tripsQuery.limit(100);
 
         if (error) throw error;
         if (!trips || trips.length === 0) return res.json({ trips: [] });

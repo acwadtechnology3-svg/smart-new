@@ -25,6 +25,16 @@ export const requestLogger = (req: Request, res: Response, next: NextFunction) =
         // Add requestId to response header
         res.setHeader('X-Request-ID', requestId);
 
+        // DEBUG: Log to file
+        const fs = require('fs');
+        const path = require('path');
+        const logFile = path.resolve(__dirname, '../../backend_requests.log');
+        const timestamp = new Date().toISOString();
+
+        fs.appendFile(logFile, `[${timestamp}] REQ: ${req.method} ${req.originalUrl}\n`, (err: any) => {
+            if (err) console.error("Failed to write log", err);
+        });
+
         // Log request start
         logger.debug({
             msg: 'Incoming request',
@@ -55,6 +65,10 @@ export const requestLogger = (req: Request, res: Response, next: NextFunction) =
 
             // Retrieve userId if it was attached to the request by auth middleware
             const userId = (req as any).user?.id || (req as any).userId || requestContext.getUserId();
+
+            // DEBUG: Log completion to file
+            const statusLog = `[${new Date().toISOString()}] RES: ${res.statusCode} (User: ${userId || 'Unauth'}) ${durationMs}ms - ${req.originalUrl}\n`;
+            fs.appendFile(logFile, statusLog, (err: any) => { });
 
             (logger as any)[level]({
                 msg: `HTTP ${req.method} ${req.originalUrl} completed with ${res.statusCode} in ${durationMs}ms`,

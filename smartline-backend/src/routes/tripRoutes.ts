@@ -8,6 +8,7 @@ import {
   cancelTrip,
   getTripParticipants,
   getDriverTripHistory,
+  getPassengerTripHistory,
   getActiveTrip,
   getRequestedTrips,
 } from '../controllers/tripController';
@@ -55,6 +56,14 @@ router.get(
   authenticate,
   requireDriver,
   getDriverTripHistory
+);
+
+// Passenger trip history
+router.get(
+  '/passenger/history',
+  authenticate,
+  requireCustomer,
+  getPassengerTripHistory
 );
 
 // Active trip for current user

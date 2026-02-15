@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { View, StyleSheet, TouchableOpacity, Dimensions, Animated, I18nManager, PanResponder, ScrollView, Platform, Image, Linking, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Menu, Scan, ShieldCheck, Search, MapPin, Gift, CarFront, Navigation, ChevronRight } from 'lucide-react-native';
+import { Menu, Scan, ShieldCheck, Search, MapPin, Gift, CarFront, Navigation } from 'lucide-react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -55,6 +55,8 @@ export default function CustomerHomeScreen() {
     const [activeTravelRequestId, setActiveTravelRequestId] = useState<string | null>(null);
     const [promoBanners, setPromoBanners] = useState<PromoBanner[]>([]);
     const [bannersLoading, setBannersLoading] = useState(true);
+
+    const mapRef = useRef<MapView>(null);
 
     // Draggable Sheet Logic
     const pan = useRef(new Animated.Value(SNAP_DEFAULT)).current;
@@ -196,6 +198,23 @@ export default function CustomerHomeScreen() {
     const leadingStyle = isSimulating ? { right: 20 } : { left: 20 };
     const trailingStyle = isSimulating ? { left: 20 } : { right: 20 };
 
+    const handleRecenter = async () => {
+        try {
+            const currentLoc = await Location.getCurrentPositionAsync({});
+            setLocation(currentLoc);
+            if (mapRef.current) {
+                mapRef.current.animateToRegion({
+                    latitude: currentLoc.coords.latitude,
+                    longitude: currentLoc.coords.longitude,
+                    latitudeDelta: 0.01,
+                    longitudeDelta: 0.01,
+                }, 1000);
+            }
+        } catch (error) {
+            console.log("Error getting location for recenter", error);
+        }
+    };
+
     const handleWhereToPress = () => {
         navigation.navigate('SearchLocation');
     };
@@ -221,7 +240,7 @@ export default function CustomerHomeScreen() {
                         } else if (screenName === 'Wallet') {
                             navigation.navigate('Wallet');
                         } else if (screenName === 'Support') {
-                            navigation.navigate('Support');
+                            navigation.navigate('Help');
                         } else if (screenName === 'Profile') {
                             navigation.navigate('Profile');
                         } else {
@@ -243,7 +262,9 @@ export default function CustomerHomeScreen() {
         <View style={[styles.container, { backgroundColor: colors.background }]}>
             <View style={styles.mapLayer}>
                 <MapView
-                    style={StyleSheet.absoluteFillObject}
+                    key={`customer-home-map-${isDark ? 'dark' : 'light'}`}
+                    ref={mapRef}
+                    style={[StyleSheet.absoluteFillObject, { backgroundColor: isDark ? '#212121' : '#f5f5f5' }]}
                     initialRegion={location ? {
                         latitude: location.coords.latitude,
                         longitude: location.coords.longitude,
@@ -251,6 +272,7 @@ export default function CustomerHomeScreen() {
                         longitudeDelta: 0.01,
                     } : DEFAULT_REGION}
                     showsUserLocation={true}
+                    mapType={Platform.OS === 'android' ? 'none' : 'standard'}
                     customMapStyle={isDark ? DARK_EMPTY_MAP_STYLE : EMPTY_MAP_STYLE}
                     userInterfaceStyle={isDark ? 'dark' : 'light'}
                 >
@@ -274,7 +296,10 @@ export default function CustomerHomeScreen() {
 
                 {/* Floating UI Elements synchronized with panel */}
                 <Animated.View style={[styles.floatingUI, { transform: [{ translateY: pan }] }]} pointerEvents="box-none">
-                    <TouchableOpacity style={[styles.recenterButton, trailingStyle, { backgroundColor: colors.surface, shadowColor: colors.shadow }]}>
+                    <TouchableOpacity
+                        style={[styles.recenterButton, trailingStyle, { backgroundColor: colors.surface, shadowColor: colors.shadow }]}
+                        onPress={handleRecenter}
+                    >
                         <Navigation color={colors.textPrimary} size={24} fill={colors.textPrimary} />
                     </TouchableOpacity>
                     <TouchableOpacity style={[styles.safetyPill, leadingStyle, { flexDirection: isRTL ? 'row-reverse' : 'row', backgroundColor: colors.surface, shadowColor: colors.shadow }]} onPress={() => navigation.navigate('Safety', {})}>
@@ -288,7 +313,7 @@ export default function CustomerHomeScreen() {
                     <ChatBotButton
                         onPress={() => setChatBotVisible(true)}
                         disableDrag
-                        style={[leadingStyle, { bottom: 50, position: 'absolute' }]}
+                        style={[{ right: 20 }, { bottom: 56, position: 'absolute' }]}
                     />
                 </Animated.View>
 
@@ -320,14 +345,7 @@ export default function CustomerHomeScreen() {
                                     >
                                         {banner.image_url ? (
                                             <View style={styles.bannerImageContainer}>
-                                                <Image source={{ uri: banner.image_url }} style={styles.bannerImage} />
-                                                <View style={styles.bannerOverlay}>
-                                                    <Text variant="h3" style={[styles.bannerTitle, { textAlign: isRTL ? 'right' : 'left' }]}>{banner.title}</Text>
-                                                    {banner.subtitle && (
-                                                        <Text variant="body" style={[styles.bannerSub, { textAlign: isRTL ? 'right' : 'left' }]}>{banner.subtitle}</Text>
-                                                    )}
-                                                </View>
-                                                <ChevronRight color="#fff" size={20} style={{ margin: 16, transform: [{ rotate: isRTL ? '180deg' : '0deg' }] }} />
+                                                <Image source={{ uri: banner.image_url }} style={styles.bannerImage} resizeMode="contain" />
                                             </View>
                                         ) : (
                                             <LinearGradient
@@ -335,15 +353,7 @@ export default function CustomerHomeScreen() {
                                                 style={styles.bannerGradient}
                                                 start={{ x: 0, y: 0 }}
                                                 end={{ x: 1, y: 0 }}
-                                            >
-                                                <View style={{ flex: 1, padding: 16, justifyContent: 'center' }}>
-                                                    <Text variant="h3" style={[styles.bannerTitle, { textAlign: isRTL ? 'right' : 'left' }]}>{banner.title}</Text>
-                                                    {banner.subtitle && (
-                                                        <Text variant="body" style={[styles.bannerSub, { textAlign: isRTL ? 'right' : 'left' }]}>{banner.subtitle}</Text>
-                                                    )}
-                                                </View>
-                                                <ChevronRight color="#fff" size={20} style={{ margin: 16, transform: [{ rotate: isRTL ? '180deg' : '0deg' }] }} />
-                                            </LinearGradient>
+                                            />
                                         )}
                                     </TouchableOpacity>
                                 ))}
@@ -497,14 +507,11 @@ const styles = StyleSheet.create({
     sectionTitle: { fontSize: 14, fontWeight: '600', color: '#6B7280' },
     bannerScroll: { gap: 12, paddingRight: 20 },
     bannerItem: { width: 280, height: 120, borderRadius: 16, overflow: 'hidden', elevation: 3, shadowColor: '#000', shadowOpacity: 0.1, shadowOffset: { width: 0, height: 2 } },
-    bannerGradient: { flex: 1, flexDirection: 'row', alignItems: 'center' },
-    bannerTitle: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
-    bannerSub: { color: 'rgba(255,255,255,0.9)', fontSize: 13, marginTop: 4 },
+    bannerGradient: { flex: 1 },
 
     // Dynamic banner styles
     bannerLoading: { width: 280, height: 120, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F3F4F6', borderRadius: 16 },
     bannerLoadingText: { color: '#6B7280', fontSize: 14 },
-    bannerImageContainer: { flex: 1, flexDirection: 'row', alignItems: 'center' },
-    bannerImage: { flex: 1, height: 120, resizeMode: 'cover' },
-    bannerOverlay: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, padding: 16, justifyContent: 'center' },
+    bannerImageContainer: { flex: 1, backgroundColor: '#fff' },
+    bannerImage: { width: '100%', height: '100%' },
 });

@@ -1,16 +1,18 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image, Dimensions, Linking, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Image, Dimensions, Linking, Alert, Platform } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Phone, MessageSquare, Star, CarFront, ShieldCheck, Navigation } from 'lucide-react-native';
 import { RootStackParamList } from '../../types/navigation';
 import { Colors } from '../../constants/Colors';
+import { EMPTY_MAP_STYLE, DARK_EMPTY_MAP_STYLE } from '../../constants/MapStyles';
 import MapView, { Marker } from 'react-native-maps';
 import MapTileLayer from '../../components/MapTileLayer';
 import { apiRequest } from '../../services/backend';
 import { realtimeClient } from '../../services/realtimeClient';
 import { tripStatusService } from '../../services/tripStatusService';
 import { useLanguage } from '../../context/LanguageContext';
+import { useTheme } from '../../theme/useTheme';
 
 const { width } = Dimensions.get('window');
 const MAPBOX_ACCESS_TOKEN = process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN;
@@ -23,6 +25,7 @@ export default function DriverFoundScreen() {
     const route = useRoute<DriverFoundScreenRouteProp>();
     const { tripId, driver } = route.params;
     const { t, isRTL } = useLanguage();
+    const { colors, isDark } = useTheme();
 
     // Start global monitoring in case we restored state directly to this screen
     useEffect(() => {
@@ -204,21 +207,25 @@ export default function DriverFoundScreen() {
     }, [driverInfo?.id, driver?.id, tripId]);
 
     return (
-        <View style={styles.container}>
+        <View style={[styles.container, { backgroundColor: colors.background }]}>
             <MapView
+                key={`driver-found-map-${isDark ? 'dark' : 'light'}`}
                 ref={mapRef}
-                style={styles.map}
+                style={[styles.map, { backgroundColor: isDark ? '#212121' : '#f5f5f5' }]}
                 initialRegion={{
                     latitude: driverLoc.latitude,
                     longitude: driverLoc.longitude,
                     latitudeDelta: 0.01,
                     longitudeDelta: 0.01
                 }}
+                mapType={Platform.OS === 'android' ? 'none' : 'standard'}
+                customMapStyle={isDark ? DARK_EMPTY_MAP_STYLE : EMPTY_MAP_STYLE}
+                userInterfaceStyle={isDark ? 'dark' : 'light'}
             >
-                <MapTileLayer isDark={false} />
+                <MapTileLayer isDark={isDark} />
                 <Marker coordinate={driverLoc}>
-                    <View style={styles.carMarker}>
-                        <Navigation size={18} color="#fff" fill="#fff" transform={[{ rotate: '45deg' }]} />
+                    <View style={[styles.carMarker, { backgroundColor: colors.primary, borderColor: colors.surface, shadowColor: colors.shadow }]}>
+                        <Navigation size={18} color={colors.textOnPrimary} fill={colors.textOnPrimary} transform={[{ rotate: '45deg' }]} />
                     </View>
                 </Marker>
             </MapView>
@@ -226,43 +233,43 @@ export default function DriverFoundScreen() {
             {/* Home Button for Scheduled Trips */}
             {isTravelRequest && (
                 <TouchableOpacity
-                    style={styles.homeButton}
+                    style={[styles.homeButton, { backgroundColor: colors.surface, shadowColor: colors.shadow }]}
                     onPress={() => navigation.navigate('CustomerHome')}
                 >
-                    <Navigation size={24} color="#1F2937" />
+                    <Navigation size={24} color={colors.textPrimary} />
                 </TouchableOpacity>
             )}
 
-            <View style={styles.bottomSheet}>
+            <View style={[styles.bottomSheet, { backgroundColor: colors.surface, shadowColor: colors.shadow }]}>
                 <View style={styles.statusHeader}>
-                    <Text style={[styles.etaText, isArrived && { color: Colors.success }]}>
+                    <Text style={[styles.etaText, { color: colors.textPrimary }, isArrived && { color: colors.success }]}>
                         {isArrived ? t('driverArriving') : `${t('arrivingIn')} ${displayDriver?.eta || '2 ' + t('minutes')}`}
                     </Text>
-                    <Text style={styles.plateText}>{displayDriver?.plate || 'ABC 123'}</Text>
+                    <Text style={[styles.plateText, { color: colors.textPrimary, backgroundColor: colors.surface2 }]}>{displayDriver?.plate || 'ABC 123'}</Text>
                 </View>
 
                 <View style={styles.infoCard}>
                     <View style={styles.driverSection}>
-                        <View style={styles.avatarPlaceholder}>
+                        <View style={[styles.avatarPlaceholder, { backgroundColor: colors.surface2 }]}>
                             <Image
                                 source={{ uri: displayDriver?.image || 'https://ui-avatars.com/api/?name=' + (displayDriver?.name || 'Driver') }}
                                 style={styles.avatar}
                             />
                         </View>
                         <View style={styles.driverTexts}>
-                            <Text style={styles.driverName}>{displayDriver?.name || t('driver')}</Text>
+                            <Text style={[styles.driverName, { color: colors.textPrimary }]}>{displayDriver?.name || t('driver')}</Text>
                             <View style={styles.ratingRow}>
                                 <Star size={12} color="#F59E0B" fill="#F59E0B" />
-                                <Text style={styles.ratingText}>{displayDriver?.rating || '5.0'}</Text>
-                                <Text style={styles.tripCount}>(1,240 trips)</Text>
+                                <Text style={[styles.ratingText, { color: colors.textPrimary }]}>{displayDriver?.rating || '5.0'}</Text>
+                                <Text style={[styles.tripCount, { color: colors.textMuted }]}>(1,240 trips)</Text>
                             </View>
                         </View>
                     </View>
 
                     <View style={styles.carSection}>
-                        <CarFront size={28} color={Colors.primary} />
-                        <Text style={styles.carModel}>{displayDriver?.car || t('vehicle')}</Text>
-                        <Text style={styles.carColor}>{displayDriver?.color || 'Silver'}</Text>
+                        <CarFront size={28} color={colors.primary} />
+                        <Text style={[styles.carModel, { color: colors.textPrimary }]}>{displayDriver?.car || t('vehicle')}</Text>
+                        <Text style={[styles.carColor, { color: colors.textMuted }]}>{displayDriver?.color || 'Silver'}</Text>
                     </View>
                 </View>
 
@@ -278,30 +285,30 @@ export default function DriverFoundScreen() {
                             }
                         }}
                     >
-                        <View style={styles.iconCircle}>
-                            <Phone size={24} color={Colors.primary} />
+                        <View style={[styles.iconCircle, { backgroundColor: colors.surface2, borderColor: colors.border }]}>
+                            <Phone size={24} color={colors.primary} />
                         </View>
-                        <Text style={styles.actionLabel}>Call</Text>
+                        <Text style={[styles.actionLabel, { color: colors.textSecondary }]}>Call</Text>
                     </TouchableOpacity>
 
                     <TouchableOpacity style={styles.actionBtn} onPress={() => navigation.navigate('Chat', { driverName: displayDriver?.name || 'Captain', tripId })}>
-                        <View style={styles.iconCircle}>
-                            <MessageSquare size={24} color={Colors.primary} />
+                        <View style={[styles.iconCircle, { backgroundColor: colors.surface2, borderColor: colors.border }]}>
+                            <MessageSquare size={24} color={colors.primary} />
                         </View>
-                        <Text style={styles.actionLabel}>Chat</Text>
+                        <Text style={[styles.actionLabel, { color: colors.textSecondary }]}>Chat</Text>
                     </TouchableOpacity>
 
                     <TouchableOpacity style={styles.actionBtn} onPress={() => navigation.navigate('Safety', { tripId })}>
-                        <View style={styles.iconCircle}>
-                            <ShieldCheck size={24} color={Colors.primary} />
+                        <View style={[styles.iconCircle, { backgroundColor: colors.surface2, borderColor: colors.border }]}>
+                            <ShieldCheck size={24} color={colors.primary} />
                         </View>
-                        <Text style={styles.actionLabel}>Safety</Text>
+                        <Text style={[styles.actionLabel, { color: colors.textSecondary }]}>Safety</Text>
                     </TouchableOpacity>
                 </View>
 
                 <View style={styles.footerBtns}>
                     <TouchableOpacity
-                        style={styles.cancelBtn}
+                        style={[styles.cancelBtn, { borderColor: colors.danger }]}
                         onPress={() => {
                             Alert.alert("Cancel Trip", "Are you sure? A cancellation fee may apply.", [
                                 { text: "No", style: 'cancel' },
@@ -330,7 +337,7 @@ export default function DriverFoundScreen() {
                             ])
                         }}
                     >
-                        <Text style={styles.cancelBtnText}>Cancel</Text>
+                        <Text style={[styles.cancelBtnText, { color: colors.danger }]}>Cancel</Text>
                     </TouchableOpacity>
                 </View>
             </View>

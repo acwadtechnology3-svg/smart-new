@@ -1,14 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, TouchableOpacity, Text, SafeAreaView, Dimensions, ActivityIndicator } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, Text, SafeAreaView, Dimensions, ActivityIndicator, Platform } from 'react-native';
 import MapView, { Region } from 'react-native-maps';
 import MapTileLayer from '../../components/MapTileLayer';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../types/navigation';
-import { Colors } from '../../constants/Colors';
 import { ArrowLeft, MapPin } from 'lucide-react-native';
 import * as Location from 'expo-location';
 import axios from 'axios';
+import { useTheme } from '../../theme/useTheme';
+import { EMPTY_MAP_STYLE, DARK_EMPTY_MAP_STYLE } from '../../constants/MapStyles';
 
 type LocationPickerNavigationProp = NativeStackNavigationProp<RootStackParamList, 'LocationPicker'>;
 type LocationPickerRouteProp = RouteProp<RootStackParamList, 'LocationPicker'>;
@@ -19,6 +20,7 @@ const MAPBOX_ACCESS_TOKEN = process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN;
 export default function LocationPickerScreen() {
     const navigation = useNavigation<LocationPickerNavigationProp>();
     const route = useRoute<LocationPickerRouteProp>();
+    const { colors, isDark } = useTheme();
     const { field } = route.params;
 
     const [region, setRegion] = useState<Region | undefined>(undefined); // 👽 02-02-2026: Changed to undefined initially to wait for location
@@ -86,63 +88,93 @@ export default function LocationPickerScreen() {
         const currentRegion = regionRef.current || region;
         if (!currentRegion) return;
 
-        navigation.navigate('SearchLocation', {
+        const payload = {
             selectedAddress: address,
             selectedCoordinates: { latitude: currentRegion.latitude, longitude: currentRegion.longitude },
+            selectionId: Date.now(),
             field: field,
             returnScreen: route.params.returnScreen,
             currentPickup: route.params.currentPickup,
-            currentDest: route.params.currentDest
-        });
+            currentDest: route.params.currentDest,
+            saveAs: route.params.saveAs
+        };
+
+        if (route.params.returnScreen === 'LocationPreferences') {
+            navigation.navigate('LocationPreferences', payload as any);
+            return;
+        }
+
+        navigation.navigate('SearchLocation', payload);
     };
 
     return (
         <View style={styles.container}>
             {region && (
                 <MapView
-                    style={styles.map}
+                    key={`location-picker-map-${isDark ? 'dark' : 'light'}`}
+                    style={[styles.map, { backgroundColor: isDark ? '#212121' : '#f5f5f5' }]}
                     initialRegion={region}
                     onRegionChange={onRegionChange}
                     onRegionChangeComplete={(r) => {
                         regionRef.current = r; // Update ref
                         onRegionChangeComplete(r);
                     }}
-                    userInterfaceStyle="light"
+                    mapType={Platform.OS === 'android' ? 'none' : 'standard'}
+                    customMapStyle={isDark ? DARK_EMPTY_MAP_STYLE : EMPTY_MAP_STYLE}
+                    userInterfaceStyle={isDark ? 'dark' : 'light'}
                 >
-                    <MapTileLayer isDark={false} />
+                    <MapTileLayer isDark={isDark} />
                 </MapView>
             )}
 
             <View style={styles.centerMarkerContainer} pointerEvents="none">
-                <MapPin size={40} color={Colors.primary} fill={Colors.primary} />
-                <View style={styles.markerDot} />
+                <MapPin size={40} color={colors.primary} fill={colors.primary} />
+                <View style={[styles.markerDot, { backgroundColor: colors.textPrimary }]} />
             </View>
 
             {/* Header Overlay */}
             <SafeAreaView style={styles.header} pointerEvents="box-none">
-                <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
-                    <ArrowLeft size={24} color="#1e1e1e" />
+                <TouchableOpacity
+                    style={[
+                        styles.backButton,
+                        {
+                            backgroundColor: colors.surface,
+                            shadowColor: colors.shadow,
+                        },
+                    ]}
+                    onPress={() => navigation.goBack()}
+                >
+                    <ArrowLeft size={24} color={colors.textPrimary} />
                 </TouchableOpacity>
             </SafeAreaView>
 
             {/* Bottom Sheet for confirmation */}
-            <View style={styles.bottomSheet}>
-                <Text style={styles.label}>{field === 'pickup' ? 'Pick up location' : 'Destination'}</Text>
+            <View
+                style={[
+                    styles.bottomSheet,
+                    {
+                        backgroundColor: colors.surface,
+                        shadowColor: colors.shadow,
+                        borderColor: colors.border,
+                    },
+                ]}
+            >
+                <Text style={[styles.label, { color: colors.textMuted }]}>{field === 'pickup' ? 'Pick up location' : 'Destination'}</Text>
 
-                <View style={styles.addressContainer}>
+                <View style={[styles.addressContainer, { borderBottomColor: colors.border }]}>
                     {loading ? (
-                        <ActivityIndicator size="small" color={Colors.primary} />
+                        <ActivityIndicator size="small" color={colors.primary} />
                     ) : (
-                        <Text style={styles.addressText} numberOfLines={2}>{address}</Text>
+                        <Text style={[styles.addressText, { color: colors.textPrimary }]} numberOfLines={2}>{address}</Text>
                     )}
                 </View>
 
                 <TouchableOpacity
-                    style={[styles.confirmButton, loading && styles.disabledButton]}
+                    style={[styles.confirmButton, { backgroundColor: colors.primary }, loading && styles.disabledButton]}
                     onPress={handleConfirm}
                     disabled={loading}
                 >
-                    <Text style={styles.confirmButtonText}>Confirm Location</Text>
+                    <Text style={[styles.confirmButtonText, { color: colors.textOnPrimary }]}>Confirm Location</Text>
                 </TouchableOpacity>
             </View>
         </View>
@@ -168,21 +200,20 @@ const styles = StyleSheet.create({
     },
     bottomSheet: {
         position: 'absolute', bottom: 0, left: 0, right: 0,
-        backgroundColor: '#fff',
         borderTopLeftRadius: 24, borderTopRightRadius: 24,
         padding: 24,
-        shadowColor: '#000', shadowOffset: { width: 0, height: -4 }, shadowOpacity: 0.1, shadowRadius: 10, elevation: 10
+        borderTopWidth: 1,
+        shadowOffset: { width: 0, height: -4 }, shadowOpacity: 0.15, shadowRadius: 10, elevation: 10
     },
-    label: { fontSize: 14, color: '#6B7280', marginBottom: 8, fontWeight: '600', textTransform: 'uppercase' },
+    label: { fontSize: 14, marginBottom: 8, fontWeight: '600', textTransform: 'uppercase' },
     addressContainer: {
         minHeight: 50, justifyContent: 'center', marginBottom: 20,
-        borderBottomWidth: 1, borderBottomColor: '#F3F4F6', paddingBottom: 16
+        borderBottomWidth: 1, paddingBottom: 16
     },
-    addressText: { fontSize: 18, color: '#111827', fontWeight: '600' },
+    addressText: { fontSize: 18, fontWeight: '600' },
     confirmButton: {
-        backgroundColor: Colors.primary,
         paddingVertical: 16, borderRadius: 12, alignItems: 'center'
     },
     disabledButton: { opacity: 0.7 },
-    confirmButtonText: { color: '#fff', fontSize: 16, fontWeight: 'bold' }
+    confirmButtonText: { fontSize: 16, fontWeight: 'bold' }
 });

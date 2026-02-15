@@ -1,16 +1,18 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Dimensions, Animated, Alert, Image, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Dimensions, Animated, Alert, Image, ScrollView, Platform } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { X, MapPin, Navigation as NavigationIcon, Car, Star, User, Palette } from 'lucide-react-native';
 import { RootStackParamList } from '../../types/navigation';
 import { Colors } from '../../constants/Colors';
+import { EMPTY_MAP_STYLE, DARK_EMPTY_MAP_STYLE } from '../../constants/MapStyles';
 import MapView, { Marker } from 'react-native-maps';
 import MapTileLayer from '../../components/MapTileLayer';
 import { apiRequest } from '../../services/backend';
 import { realtimeClient } from '../../services/realtimeClient';
 import { tripStatusService } from '../../services/tripStatusService';
 import { useLanguage } from '../../context/LanguageContext';
+import { useTheme } from '../../theme/useTheme';
 
 const { width, height } = Dimensions.get('window');
 const MAPBOX_ACCESS_TOKEN = process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN;
@@ -24,6 +26,7 @@ export default function SearchingDriverScreen() {
     const route = useRoute<SearchingDriverScreenRouteProp>();
     const { tripId } = route.params;
     const { t, isRTL } = useLanguage();
+    const { colors, isDark } = useTheme();
 
     const [isSearching, setIsSearching] = useState(true);
     const [offers, setOffers] = useState<any[]>([]);
@@ -148,8 +151,10 @@ export default function SearchingDriverScreen() {
                 (payload) => {
                     console.log('[SearchingDriver] New offer received:', payload.new);
                     const driverData = payload.new?.driver;
+                    let offerToAdd = payload.new;
+
                     if (driverData) {
-                        const offerWithDriver = {
+                        offerToAdd = {
                             ...payload.new,
                             driver: {
                                 id: driverData.id,
@@ -162,10 +167,12 @@ export default function SearchingDriverScreen() {
                                 color: driverData.vehicle_color,
                             }
                         };
-                        setOffers((prev) => [...prev, offerWithDriver]);
-                    } else {
-                        setOffers((prev) => [...prev, payload.new]);
                     }
+
+                    setOffers((prev) => {
+                        if (prev.some(o => o.id === offerToAdd.id)) return prev;
+                        return [...prev, offerToAdd];
+                    });
                 }
             );
 
@@ -327,27 +334,31 @@ export default function SearchingDriverScreen() {
 
     if (!trip) {
         return (
-            <View style={styles.loadingContainer}>
-                <Text>Loading...</Text>
+            <View style={[styles.loadingContainer, { backgroundColor: colors.background }]}>
+                <Text style={{ color: colors.textSecondary }}>Loading...</Text>
             </View>
         );
     }
 
     return (
-        <View style={styles.container}>
+        <View style={[styles.container, { backgroundColor: colors.background }]}>
             {/* Map View */}
             <View style={styles.mapContainer}>
                 <MapView
+                    key={`searching-driver-map-${isDark ? 'dark' : 'light'}`}
                     ref={mapRef}
-                    style={styles.map}
+                    style={[styles.map, { backgroundColor: isDark ? '#212121' : '#f5f5f5' }]}
                     initialRegion={{
                         latitude: 31.2357,
                         longitude: 29.9511,
                         latitudeDelta: 0.05,
                         longitudeDelta: 0.05,
                     }}
+                    mapType={Platform.OS === 'android' ? 'none' : 'standard'}
+                    customMapStyle={isDark ? DARK_EMPTY_MAP_STYLE : EMPTY_MAP_STYLE}
+                    userInterfaceStyle={isDark ? 'dark' : 'light'}
                 >
-                    <MapTileLayer isDark={false} />
+                    <MapTileLayer isDark={isDark} />
 
                     {trip && (
                         <>
@@ -369,19 +380,19 @@ export default function SearchingDriverScreen() {
             {/* Home Button for Travel Requests */}
             {trip?.is_travel_request && (
                 <TouchableOpacity
-                    style={styles.homeButton}
+                    style={[styles.homeButton, { backgroundColor: colors.surface, shadowColor: colors.shadow }]}
                     onPress={() => navigation.navigate('CustomerHome')}
                 >
-                    <NavigationIcon size={24} color="#1F2937" />
+                    <NavigationIcon size={24} color={colors.textPrimary} />
                 </TouchableOpacity>
             )}
             {/* Close Button */}
-            <TouchableOpacity style={styles.closeButton} onPress={handleCancel}>
-                <X size={24} color="#1F2937" />
+            <TouchableOpacity style={[styles.closeButton, { backgroundColor: colors.surface, shadowColor: colors.shadow }]} onPress={handleCancel}>
+                <X size={24} color={colors.textPrimary} />
             </TouchableOpacity>
 
             {/* Bottom Card */}
-            <View style={styles.bottomCard}>
+            <View style={[styles.bottomCard, { backgroundColor: colors.surface, shadowColor: colors.shadow }]}>
                 <View style={styles.searchingContainer}>
                     <Animated.View
                         style={[
@@ -399,14 +410,14 @@ export default function SearchingDriverScreen() {
                             },
                         ]}
                     >
-                        <View style={styles.iconInner}>
+                        <View style={[styles.iconInner, { backgroundColor: colors.surface }]}>
                             <Text style={styles.iconText}>🚗</Text>
                         </View>
                     </Animated.View>
                 </View>
 
-                <Text style={styles.title}>{t('findingYourDriver')}</Text>
-                <Text style={styles.subtitle}>
+                <Text style={[styles.title, { color: colors.textPrimary }]}>{t('findingYourDriver')}</Text>
+                <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
                     {offers.length > 0
                         ? `${offers.length} ${t('driverOffers')}`
                         : t('searchingNearby')
@@ -417,7 +428,7 @@ export default function SearchingDriverScreen() {
                 {offers.length > 0 && (
                     <ScrollView style={styles.offersListContainer} showsVerticalScrollIndicator={false}>
                         {offers.map((offer, index) => (
-                            <View key={offer.id || index} style={styles.offerCard}>
+                            <View key={offer.id || index} style={[styles.offerCard, { backgroundColor: colors.surface, borderColor: colors.border, shadowColor: colors.shadow }]}>
                                 {/* Header: Driver Info & Price */}
                                 <View style={styles.offerHeader}>
                                     <View style={styles.driverInfo}>
@@ -428,7 +439,7 @@ export default function SearchingDriverScreen() {
                                                     style={styles.driverImage}
                                                 />
                                             ) : (
-                                                <View style={styles.driverAvatarFallback}>
+                                                <View style={[styles.driverAvatarFallback, { backgroundColor: colors.surface3, borderColor: colors.border }]}>
                                                     <User size={24} color="#FFF" />
                                                 </View>
                                             )}
@@ -439,10 +450,10 @@ export default function SearchingDriverScreen() {
                                         </View>
 
                                         <View style={styles.driverDetails}>
-                                            <Text style={styles.driverName}>{offer.driver?.name || t('driver')}</Text>
+                                            <Text style={[styles.driverName, { color: colors.textPrimary }]}>{offer.driver?.name || t('driver')}</Text>
                                             <View style={styles.carInfoRow}>
-                                                <Car size={14} color={Colors.textSecondary} />
-                                                <Text style={styles.carText}>
+                                                <Car size={14} color={colors.textSecondary} />
+                                                <Text style={[styles.carText, { color: colors.textSecondary }]}>
                                                     {offer.driver?.car || t('vehicle')}
                                                     {offer.driver?.color ? ` • ${offer.driver.color}` : ''}
                                                 </Text>
@@ -450,34 +461,34 @@ export default function SearchingDriverScreen() {
                                         </View>
                                     </View>
 
-                                    <View style={styles.priceContainer}>
-                                        <Text style={styles.priceLabel}>{t('offer')}</Text>
-                                        <Text style={styles.priceValue}>EGP {Math.round(offer.offer_price || offer.offered_price || offer.price)}</Text>
+                                    <View style={[styles.priceContainer, { backgroundColor: isDark ? 'rgba(16,185,129,0.2)' : '#ECFDF5', borderColor: isDark ? 'rgba(52,211,153,0.45)' : '#A7F3D0' }]}>
+                                        <Text style={[styles.priceLabel, { color: colors.success }]}>{t('offer')}</Text>
+                                        <Text style={[styles.priceValue, { color: colors.success }]}>EGP {Math.round(offer.offer_price || offer.offered_price || offer.price)}</Text>
                                     </View>
                                 </View>
 
                                 {/* Vehicle Plate & Extras (Divider) */}
-                                <View style={styles.divider} />
+                                <View style={[styles.divider, { backgroundColor: colors.divider }]} />
 
                                 <View style={styles.offerExtras}>
-                                    <View style={styles.plateContainer}>
-                                        <Text style={styles.plateLabel}>EGY</Text>
-                                        <Text style={styles.plateNumber}>{offer.driver?.plate || '---'}</Text>
+                                    <View style={[styles.plateContainer, { backgroundColor: colors.surface2, borderColor: colors.border }]}>
+                                        <Text style={[styles.plateLabel, { color: colors.textPrimary }]}>EGY</Text>
+                                        <Text style={[styles.plateNumber, { color: colors.textSecondary }]}>{offer.driver?.plate || '---'}</Text>
                                     </View>
-                                    <View style={styles.etaContainer}>
-                                        <Text style={styles.etaText}>~ {offer.driver?.eta || '5 min'}</Text>
+                                    <View style={[styles.etaContainer, { backgroundColor: colors.surfaceHighlight }]}>
+                                        <Text style={[styles.etaText, { color: colors.info }]}>~ {offer.driver?.eta || '5 min'}</Text>
                                     </View>
                                 </View>
 
                                 {/* Action Buttons */}
                                 <View style={styles.offerActions}>
                                     <TouchableOpacity
-                                        style={styles.rejectButton}
+                                        style={[styles.rejectButton, { backgroundColor: isDark ? 'rgba(248,113,113,0.14)' : '#FEF2F2', borderColor: colors.danger }]}
                                         onPress={() => handleRejectOffer(offer)}
                                         activeOpacity={0.7}
                                     >
-                                        <X size={20} color="#EF4444" />
-                                        <Text style={styles.rejectButtonText}>{t('reject')}</Text>
+                                        <X size={20} color={colors.danger} />
+                                        <Text style={[styles.rejectButtonText, { color: colors.danger }]}>{t('reject')}</Text>
                                     </TouchableOpacity>
                                     <TouchableOpacity
                                         style={styles.acceptButton}
@@ -495,20 +506,20 @@ export default function SearchingDriverScreen() {
                 <View style={styles.tripDetails}>
                     <View style={styles.detailRow}>
                         <View style={styles.dot} />
-                        <Text style={styles.detailText} numberOfLines={1}>
+                        <Text style={[styles.detailText, { color: colors.textPrimary }]} numberOfLines={1}>
                             {trip.pickup_address || 'Pickup location'}
                         </Text>
                     </View>
                     <View style={styles.detailRow}>
                         <View style={[styles.dot, { backgroundColor: Colors.danger }]} />
-                        <Text style={styles.detailText} numberOfLines={1}>
+                        <Text style={[styles.detailText, { color: colors.textPrimary }]} numberOfLines={1}>
                             {trip.dest_address || 'Destination'}
                         </Text>
                     </View>
                 </View>
 
-                <TouchableOpacity style={styles.cancelButton} onPress={handleCancel}>
-                    <Text style={styles.cancelButtonText}>Cancel Request</Text>
+                <TouchableOpacity style={[styles.cancelButton, { borderColor: colors.danger }]} onPress={handleCancel}>
+                    <Text style={[styles.cancelButtonText, { color: colors.danger }]}>Cancel Request</Text>
                 </TouchableOpacity>
             </View>
         </View>

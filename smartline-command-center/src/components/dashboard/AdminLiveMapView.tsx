@@ -91,6 +91,7 @@ export const AdminLiveMapView: React.FC<AdminLiveMapViewProps> = ({
     const [mapCenter] = useState<[number, number]>([30.0444, 31.2357]); // Default Cairo
 
     const fetchDriverLocations = async () => {
+        const authToken = localStorage.getItem('dashboard_token') || localStorage.getItem('token');
         const params = new URLSearchParams({
             status: filters.status !== 'all' ? filters.status : '',
             vehicleType: filters.vehicleType !== 'all' ? filters.vehicleType : '',
@@ -99,7 +100,7 @@ export const AdminLiveMapView: React.FC<AdminLiveMapViewProps> = ({
 
         const response = await fetch(`${apiBaseUrl}/admin/locations/live?${params.toString()}`, {
             headers: {
-                'Authorization': `Bearer ${localStorage.getItem('token')}` // Ensure auth
+                ...(authToken ? { 'Authorization': `Bearer ${authToken}` } : {})
             }
         });
 

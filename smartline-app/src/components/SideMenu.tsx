@@ -1,10 +1,10 @@
 import React, { useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Dimensions, Animated, Modal, TouchableWithoutFeedback, I18nManager, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Dimensions, Animated, Modal, TouchableWithoutFeedback, I18nManager, Platform, Image } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
-    BookOpen, CreditCard, Headphones, MessageSquare, ShieldCheck, Settings,
-    Gift, Tag, ChevronRight, User, LogOut, ArrowRight, ArrowLeft
+    BookOpen, CreditCard, Headphones, ShieldCheck, Settings,
+    Gift, Tag, ChevronRight, User, LogOut, ArrowRight, ArrowLeft, MapPin
 } from 'lucide-react-native';
 import { RootStackParamList } from '../types/navigation';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -26,6 +26,30 @@ export default function SideMenu({ visible, onClose }: SideMenuProps) {
     const [modalVisible, setModalVisible] = React.useState(false);
     const { t, isRTL } = useLanguage();
     const { colors, isDark } = useTheme();
+    const [userInfo, setUserInfo] = React.useState<{ name: string; photo: string | null } | null>(null);
+
+    useEffect(() => {
+        if (visible) {
+            loadUser();
+        }
+    }, [visible]);
+
+    const loadUser = async () => {
+        try {
+            const session = await AsyncStorage.getItem('userSession');
+            if (session) {
+                const { user } = JSON.parse(session);
+                if (user) {
+                    setUserInfo({
+                        name: user.full_name || 'User',
+                        photo: user.profile_photo_url || null
+                    });
+                }
+            }
+        } catch (e) {
+            console.log('Error loading user in SideMenu', e);
+        }
+    };
 
     // Calculate correct hidden offset
     const getHiddenOffset = () => {
@@ -126,15 +150,20 @@ export default function SideMenu({ visible, onClose }: SideMenuProps) {
                     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
 
                         {/* Header */}
+
                         <TouchableOpacity
                             style={[styles.header, { flexDirection }]}
                             onPress={() => handleNavigation('PersonalInformation')}
                         >
                             <View style={styles.avatarContainer}>
-                                <User size={30} color="#fff" />
+                                {userInfo?.photo ? (
+                                    <Image source={{ uri: userInfo.photo }} style={styles.avatarImage} resizeMode="cover" />
+                                ) : (
+                                    <User size={30} color="#fff" />
+                                )}
                             </View>
                             <View style={{ flex: 1, marginHorizontal: 12, alignItems: isRTL ? 'flex-end' : 'flex-start' }}>
-                                <Text style={[styles.userName, { color: colors.textPrimary }]}>Salah Ezzat</Text>
+                                <Text style={[styles.userName, { color: colors.textPrimary }]}>{userInfo?.name || 'User'}</Text>
                                 <Text style={styles.editProfileText}>{t('viewProfile')}</Text>
                             </View>
                             {isRTL ? <ArrowLeft size={16} color={colors.textMuted} /> : <ArrowRight size={16} color={colors.textMuted} />}
@@ -173,13 +202,6 @@ export default function SideMenu({ visible, onClose }: SideMenuProps) {
                                 textColor={colors.textPrimary}
                             />
                             <MenuItem
-                                icon={<MessageSquare size={22} color="#8B5CF6" />}
-                                label={t('messages')}
-                                onPress={() => handleNavigation('Messages')}
-                                isRTL={isRTL}
-                                textColor={colors.textPrimary}
-                            />
-                            <MenuItem
                                 icon={<ShieldCheck size={22} color="#EF4444" />}
                                 label={t('safetyCenter')}
                                 onPress={() => handleNavigation('Safety')}
@@ -190,6 +212,13 @@ export default function SideMenu({ visible, onClose }: SideMenuProps) {
                                 icon={<Settings size={22} color="#6B7280" />}
                                 label={t('settings')}
                                 onPress={() => handleNavigation('Settings')}
+                                isRTL={isRTL}
+                                textColor={colors.textPrimary}
+                            />
+                            <MenuItem
+                                icon={<MapPin size={22} color="#0EA5E9" />}
+                                label={t('locationPreferences')}
+                                onPress={() => handleNavigation('LocationPreferences')}
                                 isRTL={isRTL}
                                 textColor={colors.textPrimary}
                             />
@@ -257,6 +286,7 @@ const styles = StyleSheet.create({
     header: {
         alignItems: 'center',
         paddingVertical: 20,
+        marginTop: 20,
     },
     userName: {
         fontSize: 18,
@@ -274,6 +304,11 @@ const styles = StyleSheet.create({
         backgroundColor: '#3B82F6',
         alignItems: 'center',
         justifyContent: 'center',
+        overflow: 'hidden',
+    },
+    avatarImage: {
+        width: '100%',
+        height: '100%',
     },
     divider: {
         height: 1,

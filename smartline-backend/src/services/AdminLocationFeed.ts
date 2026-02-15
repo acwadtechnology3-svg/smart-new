@@ -176,7 +176,7 @@ class AdminLocationFeed {
 
                 const cachedProfilesRes = await pipelineProfile.exec();
                 const missingProfileIds: string[] = [];
-                const driverProfiles = new Map<string, { name: string, vehicle: string }>();
+                const driverProfiles = new Map<string, { name: string; vehicle: string; vehicleType?: string }>();
 
                 snapshots.forEach((s, idx) => {
                     const cached = cachedProfilesRes?.[idx]?.[1];
@@ -198,7 +198,14 @@ class AdminLocationFeed {
                     const uniqueMissingIds = [...new Set(missingProfileIds)];
 
                     const dbRes = await query(
-                        `SELECT id, first_name, last_name, vehicle_details FROM users WHERE id = ANY($1)`,
+                        `SELECT
+                            u.id,
+                            u.full_name,
+                            d.vehicle_model,
+                            d.vehicle_type
+                         FROM users u
+                         LEFT JOIN drivers d ON d.id = u.id
+                         WHERE u.id = ANY($1)`,
                         [uniqueMissingIds]
                     );
 
@@ -206,10 +213,10 @@ class AdminLocationFeed {
                         const pipelineSave = redis.pipeline();
 
                         dbRes.rows.forEach(row => {
-                            const vehicleInfo = row.vehicle_details as any;
                             const profile = {
-                                name: `${row.first_name} ${row.last_name}`,
-                                vehicle: vehicleInfo?.model || 'Unknown Vehicle'
+                                name: row.full_name || 'Unknown Driver',
+                                vehicle: row.vehicle_model || 'Unknown Vehicle',
+                                vehicleType: row.vehicle_type || undefined,
                             };
                             driverProfiles.set(row.id, profile);
                             // Cache for 1 hour
@@ -225,12 +232,9 @@ class AdminLocationFeed {
                     const profile = driverProfiles.get(s.driverId);
                     if (profile) {
                         s.name = profile.name;
-                        // Determine vehicle type priority
-                        if (s.vehicleType === 'sedan' && profile.vehicle !== 'Unknown Vehicle') {
-                            // Only override default 'sedan' if profile has specific info?
-                            // Or maybe vehicleType from metadata is more live/accurate (e.g. if driver switched vehicles)?
-                            // Metadata usually comes from driver app login.
-                            // Let's trust metadata first, but update name.
+                        // If metadata has only a default vehicle type, use DB value when available.
+                        if (s.vehicleType === 'sedan' && profile.vehicleType) {
+                            s.vehicleType = profile.vehicleType;
                         }
                     }
                 });
@@ -245,9 +249,9 @@ class AdminLocationFeed {
                 const tripsRes = await query(
                     `SELECT t.id, t.status, t.created_at as "startedAt",
                       t.customer_id, 
-                      u.first_name || ' ' || u.last_name as "customerName",
-                      t.pickup_lat, t.pickup_lng, t.pickup_desc,
-                      t.dest_lat, t.dest_lng, t.dest_desc
+                      u.full_name as "customerName",
+                      t.pickup_lat, t.pickup_lng, t.pickup_address,
+                      t.dest_lat, t.dest_lng, t.dest_address
                FROM trips t
                JOIN users u ON t.customer_id = u.id
                WHERE t.id = ANY($1)`,
@@ -266,12 +270,12 @@ class AdminLocationFeed {
                             pickup: {
                                 lat: parseFloat(trip.pickup_lat),
                                 lng: parseFloat(trip.pickup_lng),
-                                address: trip.pickup_desc || 'Unknown Pickup'
+                                address: trip.pickup_address || 'Unknown Pickup'
                             },
                             destination: {
                                 lat: parseFloat(trip.dest_lat),
                                 lng: parseFloat(trip.dest_lng),
-                                address: trip.dest_desc || 'Unknown Destination'
+                                address: trip.dest_address || 'Unknown Destination'
                             },
                             status: trip.status,
                             startedAt: trip.startedAt

@@ -1,16 +1,18 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Dimensions, Alert, ActivityIndicator, Linking } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Dimensions, Alert, ActivityIndicator, Linking, Platform } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Phone, MessageSquare, ShieldCheck } from 'lucide-react-native';
 import { RootStackParamList } from '../../types/navigation';
 import { Colors } from '../../constants/Colors';
+import { EMPTY_MAP_STYLE, DARK_EMPTY_MAP_STYLE } from '../../constants/MapStyles';
 import MapView, { Marker } from 'react-native-maps';
 import MapTileLayer from '../../components/MapTileLayer';
 import { apiRequest } from '../../services/backend';
 import { tripStatusService } from '../../services/tripStatusService';
 import { realtimeClient } from '../../services/realtimeClient';
 import { useLanguage } from '../../context/LanguageContext';
+import { useTheme } from '../../theme/useTheme';
 
 const { width } = Dimensions.get('window');
 const MAPBOX_ACCESS_TOKEN = process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN;
@@ -23,6 +25,7 @@ export default function OnTripScreen() {
     const route = useRoute<OnTripScreenRouteProp>();
     const { tripId } = route.params;
     const { t, isRTL } = useLanguage();
+    const { colors, isDark } = useTheme();
 
     const [trip, setTrip] = useState<any>(null);
     const [loading, setLoading] = useState(true);
@@ -111,39 +114,43 @@ export default function OnTripScreen() {
 
     if (loading || !trip) {
         return (
-            <View style={styles.loadingContainer}>
-                <ActivityIndicator size="large" color={Colors.primary} />
-                <Text style={styles.loadingText}>{t('loading')}...</Text>
+            <View style={[styles.loadingContainer, { backgroundColor: colors.background }]}>
+                <ActivityIndicator size="large" color={colors.primary} />
+                <Text style={[styles.loadingText, { color: colors.textSecondary }]}>{t('loading')}...</Text>
             </View>
         );
     }
 
     return (
-        <View style={styles.container}>
+        <View style={[styles.container, { backgroundColor: colors.background }]}>
             <View style={styles.topBar}>
-                <TouchableOpacity style={styles.cancelBtnTop} onPress={handleCancel}>
-                    <Text style={styles.cancelTextTop}>{t('cancelTrip')}</Text>
+                <TouchableOpacity style={[styles.cancelBtnTop, { backgroundColor: colors.surface, shadowColor: colors.shadow }]} onPress={handleCancel}>
+                    <Text style={[styles.cancelTextTop, { color: colors.danger }]}>{t('cancelTrip')}</Text>
                 </TouchableOpacity>
             </View>
 
             <MapView
+                key={`on-trip-map-${isDark ? 'dark' : 'light'}`}
                 ref={mapRef}
-                style={styles.map}
+                style={[styles.map, { backgroundColor: isDark ? '#212121' : '#f5f5f5' }]}
                 initialRegion={{
                     latitude: trip.pickup_lat || 31.2357,
                     longitude: trip.pickup_lng || 29.9511,
                     latitudeDelta: 0.05,
                     longitudeDelta: 0.05
                 }}
+                mapType={Platform.OS === 'android' ? 'none' : 'standard'}
+                customMapStyle={isDark ? DARK_EMPTY_MAP_STYLE : EMPTY_MAP_STYLE}
+                userInterfaceStyle={isDark ? 'dark' : 'light'}
             >
-                <MapTileLayer isDark={false} />
+                <MapTileLayer isDark={isDark} />
                 <Marker
                     coordinate={{
                         latitude: trip.pickup_lat,
                         longitude: trip.pickup_lng
                     }}
                     title="Pickup"
-                    pinColor={Colors.primary}
+                    pinColor={colors.primary}
                 />
                 <Marker
                     coordinate={{
@@ -151,31 +158,31 @@ export default function OnTripScreen() {
                         longitude: trip.dest_lng
                     }}
                     title="Destination"
-                    pinColor="red"
+                    pinColor={colors.danger}
                 />
             </MapView>
 
-            <View style={styles.bottomSheet}>
-                <Text style={styles.title}>{t('tripInProgress')}</Text>
-                <Text style={styles.subtitle}>{t('takingYouToDest')}</Text>
+            <View style={[styles.bottomSheet, { backgroundColor: colors.surface, shadowColor: colors.shadow }]}>
+                <Text style={[styles.title, { color: colors.textPrimary }]}>{t('tripInProgress')}</Text>
+                <Text style={[styles.subtitle, { color: colors.textSecondary }]}>{t('takingYouToDest')}</Text>
 
                 <View style={styles.tripInfo}>
                     <View style={styles.infoRow}>
-                        <Text style={styles.label}>{t('from')}:</Text>
-                        <Text style={styles.value} numberOfLines={1}>{trip.pickup_address || t('pickupLocation')}</Text>
+                        <Text style={[styles.label, { color: colors.textSecondary }]}>{t('from')}:</Text>
+                        <Text style={[styles.value, { color: colors.textPrimary }]} numberOfLines={1}>{trip.pickup_address || t('pickupLocation')}</Text>
                     </View>
                     <View style={styles.infoRow}>
-                        <Text style={styles.label}>{t('to')}:</Text>
-                        <Text style={styles.value} numberOfLines={1}>{trip.dest_address || t('destination')}</Text>
+                        <Text style={[styles.label, { color: colors.textSecondary }]}>{t('to')}:</Text>
+                        <Text style={[styles.value, { color: colors.textPrimary }]} numberOfLines={1}>{trip.dest_address || t('destination')}</Text>
                     </View>
                 </View>
 
                 <View style={styles.actionsGrid}>
                     <TouchableOpacity style={styles.actionBtn} onPress={handleCall}>
-                        <View style={styles.iconCircle}>
-                            <Phone size={24} color={Colors.primary} />
+                        <View style={[styles.iconCircle, { backgroundColor: colors.surface2, borderColor: colors.border }]}>
+                            <Phone size={24} color={colors.primary} />
                         </View>
-                        <Text style={styles.actionLabel}>{t('call')}</Text>
+                        <Text style={[styles.actionLabel, { color: colors.textSecondary }]}>{t('call')}</Text>
                     </TouchableOpacity>
 
                     <TouchableOpacity style={styles.actionBtn} onPress={() => navigation.navigate('Chat', {
@@ -183,24 +190,24 @@ export default function OnTripScreen() {
                         tripId,
                         role: 'customer'
                     })}>
-                        <View style={styles.iconCircle}>
-                            <MessageSquare size={24} color={Colors.primary} />
+                        <View style={[styles.iconCircle, { backgroundColor: colors.surface2, borderColor: colors.border }]}>
+                            <MessageSquare size={24} color={colors.primary} />
                         </View>
-                        <Text style={styles.actionLabel}>{t('chat')}</Text>
+                        <Text style={[styles.actionLabel, { color: colors.textSecondary }]}>{t('chat')}</Text>
                     </TouchableOpacity>
 
-                    <TouchableOpacity style={styles.actionBtn} onPress={() => navigation.navigate('Safety', { tripId, trip })}>
-                        <View style={styles.iconCircle}>
-                            <ShieldCheck size={24} color={Colors.primary} />
+                    <TouchableOpacity style={styles.actionBtn} onPress={() => navigation.navigate('Safety', { tripId })}>
+                        <View style={[styles.iconCircle, { backgroundColor: colors.surface2, borderColor: colors.border }]}>
+                            <ShieldCheck size={24} color={colors.primary} />
                         </View>
-                        <Text style={styles.actionLabel}>{t('safety')}</Text>
+                        <Text style={[styles.actionLabel, { color: colors.textSecondary }]}>{t('safety')}</Text>
                     </TouchableOpacity>
 
                     <TouchableOpacity style={styles.actionBtn} onPress={handleCancel}>
-                        <View style={[styles.iconCircle, { borderColor: '#FECACA', backgroundColor: '#FEF2F2' }]}>
-                            <Text style={{ fontSize: 24, fontWeight: 'bold', color: '#EF4444' }}>X</Text>
+                        <View style={[styles.iconCircle, { borderColor: colors.danger, backgroundColor: isDark ? 'rgba(248,113,113,0.18)' : '#FEF2F2' }]}>
+                            <Text style={{ fontSize: 24, fontWeight: 'bold', color: colors.danger }}>X</Text>
                         </View>
-                        <Text style={[styles.actionLabel, { color: '#EF4444' }]}>{t('cancel')}</Text>
+                        <Text style={[styles.actionLabel, { color: colors.danger }]}>{t('cancel')}</Text>
                     </TouchableOpacity>
                 </View>
             </View>

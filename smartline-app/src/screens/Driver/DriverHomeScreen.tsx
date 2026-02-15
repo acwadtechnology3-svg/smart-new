@@ -14,7 +14,7 @@ import { Card } from '../../components/ui/Card';
 import { apiRequest } from '../../services/backend';
 import { socketService } from '../../services/socketService';
 import { locationTracker, TrackingMode } from '../../services/LocationTrackingService';
-import { Menu, Shield, CircleDollarSign, Navigation, Siren, ChevronRight, Gift } from 'lucide-react-native';
+import { Menu, Shield, Navigation, ChevronRight } from 'lucide-react-native';
 import { useNavigation, useFocusEffect, useRoute } from '@react-navigation/native';
 import Constants from 'expo-constants';
 import DriverSideMenu from '../../components/DriverSideMenu';
@@ -46,7 +46,7 @@ export default function DriverHomeScreen() {
     const [walletBalance, setWalletBalance] = useState(0);
     const [incomingTrip, setIncomingTrip] = useState<any>(null);
     // Track ignored IDs AND their price. If price changes, show again.
-    const [ignoredTrips, setIgnoredTrips] = useState<Map<string, number>>(new Map());
+    const [ignoredTrips, setIgnoredTrips] = useState<Map<string, { price: number; ignoredAt: number }>>(new Map());
     const [locationSubscription, setLocationSubscription] = useState<Location.LocationSubscription | null>(null);
     const [safetyModalVisible, setSafetyModalVisible] = useState(false);
     const [trackingMode, setTrackingMode] = useState<TrackingMode>('idle');
@@ -58,6 +58,16 @@ export default function DriverHomeScreen() {
 
     // Animation for "Finding Trips" pulse
     const pulseAnim = useRef(new Animated.Value(1)).current;
+
+    const normalizeVehicleType = (value?: string | null) => (value || '').toString().trim().toLowerCase();
+    const isTripVehicleMatch = (trip: any) => {
+        const tripType = normalizeVehicleType(trip?.car_type);
+        const driverType = normalizeVehicleType(driverProfile?.vehicle_type);
+
+        // Fail-open for legacy/null data, strict match when both are present.
+        if (!tripType || !driverType) return true;
+        return tripType === driverType;
+    };
 
     useEffect(() => {
         console.log('[Mapbox] 🗺️ Map View Mounted - Consuming Raster Tiles');
@@ -209,88 +219,112 @@ export default function DriverHomeScreen() {
         }
     }, [trackingMode, isOnline]);
 
-    // Polling for available trips (Backup for Realtime)
-    useEffect(() => {
-        let pollInterval: NodeJS.Timeout;
+    // Polling for available trips (Backup for Realtime) & Active Trip Checks
+    useFocusEffect(
+        React.useCallback(() => {
+            let pollInterval: NodeJS.Timeout;
 
-        if (isOnline && location && driverProfile) {
-            pollInterval = setInterval(async () => {
-                try {
-                    // Recover from missed realtime events (e.g., accepted trip)
-                    await checkActiveTrip();
+            if (isOnline && location && driverProfile) {
+                console.log("[DriverHomeScreen] Starting polling interval...");
+                pollInterval = setInterval(async () => {
+                    try {
+                        // Recover from missed realtime events (e.g., accepted trip)
+                        await checkActiveTrip();
 
-                    // If we have an incoming trip, verify it is still valid
-                    if (incomingTrip) {
-                        try {
-                            const { trip } = await apiRequest<{ trip: any }>(`/trips/${incomingTrip.id}?t=${Date.now()}`);
-                            if (trip.status !== 'requested') {
-                                console.log(`[DriverPolling] Trip ${incomingTrip.id} is no longer requested (Status: ${trip.status}). Removing.`);
-                                Alert.alert("Trip Unavailable", "The trip has been cancelled or taken.");
-                                setIncomingTrip(null);
-                            }
-                        } catch (e: any) {
-                            // Only clear if explicitly not found or bad request
-                            if (e.status === 404 || e.status === 400) {
-                                setIncomingTrip(null);
-                            }
-                            // Network/Server errors: keep showing trip and retry next poll
-                        }
-                        return; // Skip searching
-                    }
-
-                    // Otherwise, search for new trips
-                    const { trips } = await apiRequest<{ trips: any[] }>(`/trips/requested?t=${Date.now()}`);
-
-                    if (trips && trips.length > 0) {
-                        const validTrips = trips.filter(trip => {
-                            // Check if ignored
-                            if (ignoredTrips.has(trip.id)) {
-                                const ignoredPrice = ignoredTrips.get(trip.id);
-                                // If price changed (increased), show it again!
-                                if (trip.price === ignoredPrice) {
-                                    return false;
+                        // If we have an incoming trip, verify it is still valid
+                        if (incomingTrip) {
+                            try {
+                                const { trip } = await apiRequest<{ trip: any }>(`/trips/${incomingTrip.id}?t=${Date.now()}`);
+                                if (trip.status !== 'requested') {
+                                    console.log(`[DriverPolling] Trip ${incomingTrip.id} is no longer requested (Status: ${trip.status}). Removing.`);
+                                    Alert.alert("Trip Unavailable", "The trip has been cancelled or taken.");
+                                    setIncomingTrip(null);
                                 }
+                            } catch (e: any) {
+                                // Only clear if explicitly not found or bad request
+                                if (e.status === 404 || e.status === 400) {
+                                    setIncomingTrip(null);
+                                }
+                                // Network/Server errors: keep showing trip and retry next poll
                             }
-                            if (!trip.pickup_lat) return false;
+                            return; // Skip searching
+                        }
 
-                            const dist = getDistanceFromLatLonInKm(
-                                location.coords.latitude, location.coords.longitude,
-                                trip.pickup_lat, trip.pickup_lng
-                            );
-                            return dist <= 5;
-                        });
+                        // Otherwise, search for new trips
+                        const { trips } = await apiRequest<{ trips: any[] }>(`/trips/requested?t=${Date.now()}`);
 
-                        if (validTrips.length > 0) {
-                            validTrips.sort((a, b) => {
-                                const distA = getDistanceFromLatLonInKm(location.coords.latitude, location.coords.longitude, a.pickup_lat, a.pickup_lng);
-                                const distB = getDistanceFromLatLonInKm(location.coords.latitude, location.coords.longitude, b.pickup_lat, b.pickup_lng);
-                                return distA - distB;
+                        if (trips && trips.length > 0) {
+                            const validTrips = trips.filter(trip => {
+                                if (!isTripVehicleMatch(trip)) return false;
+
+                                // Check if ignored
+                                if (ignoredTrips.has(trip.id)) {
+                                    const data = ignoredTrips.get(trip.id);
+                                    // Reappear if > 60s
+                                    if (data && (Date.now() - data.ignoredAt < 60000)) {
+                                        if (trip.price === data.price) {
+                                            return false;
+                                        }
+                                    }
+                                }
+                                if (!trip.pickup_lat) return false;
+
+                                const dist = getDistanceFromLatLonInKm(
+                                    location.coords.latitude, location.coords.longitude,
+                                    trip.pickup_lat, trip.pickup_lng
+                                );
+                                return dist <= 5;
                             });
 
-                            const trip = validTrips[0];
-                            console.log(`[DriverPolling] Found trip via poll: ${trip.id}`);
-                            setIncomingTrip(trip);
-                        }
-                    }
-                } catch (e) {
-                    // ignore
-                }
-            }, 4000);
-        }
+                            if (validTrips.length > 0) {
+                                validTrips.sort((a, b) => {
+                                    const distA = getDistanceFromLatLonInKm(location.coords.latitude, location.coords.longitude, a.pickup_lat, a.pickup_lng);
+                                    const distB = getDistanceFromLatLonInKm(location.coords.latitude, location.coords.longitude, b.pickup_lat, b.pickup_lng);
+                                    return distA - distB;
+                                });
 
-        return () => clearInterval(pollInterval);
-    }, [isOnline, location, incomingTrip, ignoredTrips, driverProfile]);
+                                const trip = validTrips[0];
+                                console.log(`[DriverPolling] Found trip via poll: ${trip.id}`);
+                                setIncomingTrip(trip);
+                            }
+                        }
+                    } catch (e) {
+                        // ignore
+                    }
+                }, 4000);
+            }
+
+            return () => {
+                if (pollInterval) {
+                    console.log("[DriverHomeScreen] Stopping polling interval");
+                    clearInterval(pollInterval);
+                }
+            };
+        }, [isOnline, location, incomingTrip, ignoredTrips, driverProfile])
+    );
 
     const handleDeclineTrip = () => {
         if (incomingTrip) {
             setIgnoredTrips(prev => {
                 const newMap = new Map(prev);
-                newMap.set(incomingTrip.id, incomingTrip.price);
+                newMap.set(incomingTrip.id, { price: incomingTrip.price, ignoredAt: Date.now() });
                 return newMap;
             });
         }
         setIncomingTrip(null);
     };
+
+    // Auto-decline incoming trip after 30 seconds
+    useEffect(() => {
+        let timer: NodeJS.Timeout;
+        if (incomingTrip) {
+            timer = setTimeout(() => {
+                console.log("[DriverHomeScreen] Trip request timed out:", incomingTrip.id);
+                handleDeclineTrip();
+            }, 30000);
+        }
+        return () => { if (timer) clearTimeout(timer); };
+    }, [incomingTrip]);
 
     useFocusEffect(
         React.useCallback(() => {
@@ -388,9 +422,16 @@ export default function DriverHomeScreen() {
                 return;
             }
 
+            if (!isTripVehicleMatch(trip)) {
+                return;
+            }
+
             // Check if ignored
             if (ignoredTrips.has(trip.id)) {
-                if (trip.price === ignoredTrips.get(trip.id)) return;
+                const data = ignoredTrips.get(trip.id);
+                if (data && (Date.now() - data.ignoredAt < 60000)) {
+                    if (trip.price === data.price) return;
+                }
             }
 
             // Check distance
@@ -453,7 +494,7 @@ export default function DriverHomeScreen() {
             // Ignore this trip so it doesn't reappear in polling
             setIgnoredTrips(prev => {
                 const newMap = new Map(prev);
-                newMap.set(tripId, amount); // Store our bid as the 'seen' price
+                newMap.set(tripId, { price: amount, ignoredAt: Date.now() });
                 return newMap;
             });
 
@@ -593,8 +634,9 @@ export default function DriverHomeScreen() {
         <View style={styles.container}>
             {/* --- MAP LAYER --- */}
             <MapView
+                key={`driver-home-map-${isDark ? 'dark' : 'light'}`}
                 ref={mapRef}
-                style={styles.mapLayer}
+                style={[styles.mapLayer, { backgroundColor: isDark ? '#212121' : '#f5f5f5' }]}
                 initialRegion={location ? {
                     latitude: location.coords.latitude,
                     longitude: location.coords.longitude,
@@ -602,6 +644,7 @@ export default function DriverHomeScreen() {
                     longitudeDelta: 0.01,
                 } : DEFAULT_REGION}
                 showsUserLocation={true}
+                mapType={Platform.OS === 'android' ? 'none' : 'standard'}
                 customMapStyle={isDark ? DARK_EMPTY_MAP_STYLE : EMPTY_MAP_STYLE}
                 userInterfaceStyle={isDark ? 'dark' : 'light'}
             >
@@ -653,7 +696,7 @@ export default function DriverHomeScreen() {
                         <Menu color={colors.textPrimary} size={24} />
                     </TouchableOpacity>
 
-                    {/* Earnings Pill */}
+                    {/* Earnings Pill - HIDDEN
                     <TouchableOpacity style={[
                         styles.earningsPill,
                         {
@@ -668,6 +711,7 @@ export default function DriverHomeScreen() {
                             {walletBalance < -100 && <Text variant="caption" style={{ color: colors.danger }}> (!)</Text>}
                         </Text>
                     </TouchableOpacity>
+                    */}
 
                     {/* Driver Profile Pic */}
                     <View style={styles.profileContainer}>
@@ -727,10 +771,10 @@ export default function DriverHomeScreen() {
                                                 <View style={styles.bannerImageContainer}>
                                                     <Image source={{ uri: banner.image_url }} style={styles.bannerImage} />
                                                     <View style={styles.bannerOverlay}>
-                                                        <Text variant="h3" style={[styles.bannerTitle, { textAlign: isRTL ? 'right' : 'left' }]}>{banner.title}</Text>
+                                                        {/* <Text variant="h3" style={[styles.bannerTitle, { textAlign: isRTL ? 'right' : 'left' }]}>{banner.title}</Text>
                                                         {banner.subtitle && (
                                                             <Text variant="caption" style={[styles.bannerSub, { textAlign: isRTL ? 'right' : 'left' }]}>{banner.subtitle}</Text>
-                                                        )}
+                                                        )} */}
                                                     </View>
                                                     <ChevronRight color="#fff" size={20} style={{ margin: 16, transform: [{ rotate: isRTL ? '180deg' : '0deg' }] }} />
                                                 </View>
@@ -742,10 +786,10 @@ export default function DriverHomeScreen() {
                                                     end={{ x: 1, y: 0 }}
                                                 >
                                                     <View style={{ flex: 1, padding: 16, justifyContent: 'center' }}>
-                                                        <Text variant="h3" style={[styles.bannerTitle, { textAlign: isRTL ? 'right' : 'left', color: '#fff' }]}>{banner.title}</Text>
+                                                        {/* <Text variant="h3" style={[styles.bannerTitle, { textAlign: isRTL ? 'right' : 'left', color: '#fff' }]}>{banner.title}</Text>
                                                         {banner.subtitle && (
                                                             <Text variant="caption" style={[styles.bannerSub, { textAlign: isRTL ? 'right' : 'left', color: 'rgba(255,255,255,0.8)' }]}>{banner.subtitle}</Text>
-                                                        )}
+                                                        )} */}
                                                     </View>
                                                     <ChevronRight color="#fff" size={20} style={{ margin: 16, transform: [{ rotate: isRTL ? '180deg' : '0deg' }] }} />
                                                 </LinearGradient>
@@ -907,7 +951,7 @@ const styles = StyleSheet.create({
         flex: 1,
         padding: 16,
         justifyContent: 'center',
-        backgroundColor: 'rgba(0,0,0,0.3)',
+        // backgroundColor: 'rgba(0,0,0,0.3)',
     },
     bannerGradient: {
         flex: 1,

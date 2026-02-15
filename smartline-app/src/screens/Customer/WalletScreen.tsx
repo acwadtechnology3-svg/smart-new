@@ -1,8 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Modal, TextInput, Alert, ScrollView, ActivityIndicator, Linking, RefreshControl, Platform, I18nManager } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft, ChevronRight, CreditCard, Banknote, PlusCircle, Wallet as WalletIcon, Check, X, ArrowDownLeft, Wallet } from 'lucide-react-native';
-import { useNavigation } from '@react-navigation/native';
 import { Colors } from '../../constants/Colors';
 import { apiRequest } from '../../services/backend';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -19,6 +19,24 @@ interface Transaction {
     status: string;
     created_at: string;
     description?: string;
+}
+
+function parseBalance(value: unknown): number | null {
+    const amount = Number(value);
+    return Number.isFinite(amount) ? amount : null;
+}
+
+function resolveBalance(summaryBalance: number | null, profileBalance: number | null, sessionBalance: number): number {
+    // Priority 1: API Summary (most accurate usually)
+    if (summaryBalance !== null) return summaryBalance;
+    // Priority 2: User Profile (secondary source)
+    if (profileBalance !== null) return profileBalance;
+    // Priority 3: Session/Cache (fallback)
+    return sessionBalance || 0;
+}
+
+function hasReliableBalanceSource(summaryBalance: number | null, profileBalance: number | null, sessionBalance: number): boolean {
+    return summaryBalance !== null || profileBalance !== null;
 }
 
 export default function WalletScreen() {
@@ -52,16 +70,22 @@ export default function WalletScreen() {
 
     useEffect(() => {
         loadCachedData();
-        fetchWalletData();
     }, []);
+
+    useFocusEffect(
+        useCallback(() => {
+            fetchWalletData();
+        }, [])
+    );
 
     const loadCachedData = async () => {
         try {
             const cached = await AsyncStorage.getItem('customer_wallet_data');
             if (cached) {
                 const { balance: cachedBalance, transactions: cachedTxs } = JSON.parse(cached);
-                setBalance(cachedBalance);
-                setTransactions(cachedTxs);
+                const parsedCachedBalance = parseBalance(cachedBalance);
+                setBalance(parsedCachedBalance ?? 0);
+                setTransactions(Array.isArray(cachedTxs) ? cachedTxs : []);
             }
         } catch (error) {
             console.error('Error loading cached wallet data:', error);
@@ -74,26 +98,122 @@ export default function WalletScreen() {
             else setLoading(true);
 
             const session = await AsyncStorage.getItem('userSession');
-            if (!session) return;
-            const { user } = JSON.parse(session);
-            setUserId(user.id);
+            if (!session) {
+                console.warn('No session found in AsyncStorage');
+                return;
+            }
+            const parsedSession = JSON.parse(session);
+            const user = parsedSession?.user;
 
-            const data = await apiRequest<{ balance: number; transactions: Transaction[] }>('/wallet/summary');
-            setBalance(data.balance || 0);
-            setTransactions(data.transactions || []);
+            if (!user || !user.id) {
+                console.warn('User object or ID missing in session', user);
+                // Try to recover by fetching /users/me if possible (auth token might be valid)
+                // But for now, just warn.
+            } else {
+                setUserId(user.id);
+            }
 
-            await AsyncStorage.setItem('customer_wallet_data', JSON.stringify({
-                balance: data.balance || 0,
-                transactions: data.transactions || []
-            }));
+            const sessionBalance = parseBalance(user?.balance) ?? 0;
 
-        } catch (error) {
+            const [summaryResult, meResult] = await Promise.allSettled([
+                apiRequest<{ balance: number; transactions: Transaction[] }>('/wallet/summary'),
+                apiRequest<{ user: any }>('/users/me')
+            ]);
+
+            let summaryBalance: number | null = null;
+            let summaryTransactions: Transaction[] | null = null;
+            if (summaryResult.status === 'fulfilled') {
+                summaryBalance = parseBalance(summaryResult.value?.balance);
+                summaryTransactions = Array.isArray(summaryResult.value?.transactions) ? summaryResult.value.transactions : [];
+            } else {
+                console.error('Wallet summary request failed:', summaryResult.reason);
+            }
+
+            let profileBalance: number | null = null;
+            if (meResult.status === 'fulfilled') {
+                profileBalance = parseBalance(meResult.value?.user?.balance);
+                await AsyncStorage.setItem('userSession', JSON.stringify({
+                    ...parsedSession,
+                    user: meResult.value.user || parsedSession.user
+                }));
+            } else {
+                console.error('Failed to refresh /users/me while loading wallet:', meResult.reason);
+            }
+
+            const safeBalance = resolveBalance(summaryBalance, profileBalance, sessionBalance);
+            const canTrustBalance = hasReliableBalanceSource(summaryBalance, profileBalance, sessionBalance);
+            if (canTrustBalance) {
+                setBalance(safeBalance);
+            }
+
+            if (summaryTransactions !== null) {
+                setTransactions(summaryTransactions);
+                const nextCachePayload: any = { transactions: summaryTransactions };
+                if (canTrustBalance) {
+                    nextCachePayload.balance = safeBalance;
+                }
+                await AsyncStorage.mergeItem('customer_wallet_data', JSON.stringify(nextCachePayload));
+            } else {
+                if (canTrustBalance) {
+                    await AsyncStorage.mergeItem('customer_wallet_data', JSON.stringify({
+                        balance: safeBalance
+                    }));
+                }
+            }
+
+        } catch (error: any) {
             console.error('Error fetching wallet data:', error);
+            // Show error to user so they know it failed (and don't just see 0 balance)
+            if (!isRefresh && !balance) {
+                Alert.alert('Connection Error', 'Failed to load wallet data. Please check your connection.');
+            }
+
+            try {
+                const session = await AsyncStorage.getItem('userSession');
+                if (session) {
+                    const { user } = JSON.parse(session);
+                    const fallbackBalance = parseBalance(user?.balance);
+                    // Only use fallback if we have one and we don't have a reliable balance yet
+                    if (fallbackBalance !== null && balance === null) setBalance(fallbackBalance);
+                }
+            } catch (fallbackError) {
+                console.error('Failed to apply wallet fallback balance from session:', fallbackError);
+            }
         } finally {
             setLoading(false);
             setRefreshing(false);
         }
     };
+
+    const verifyPendingTransactions = async (txs: Transaction[]) => {
+        const pending = txs.filter(t => t.type === 'deposit' && t.status === 'pending');
+        if (pending.length === 0) return;
+
+        let updated = false;
+        // Check sequentially to avoid overwhelming backend/kashier
+        for (const tx of pending) {
+            try {
+                // Determine if we should check this transaction (e.g. created recently)
+                // For now, check all pending deposits to accept "lost" ones
+                const res = await apiRequest<{ verified: boolean }>(`/payment/verify/${tx.id}`);
+                if (res.verified) {
+                    updated = true;
+                }
+            } catch (err) {
+                console.log('Auto-verify failed for', tx.id);
+            }
+        }
+
+        if (updated) {
+            fetchWalletData();
+        }
+    };
+
+    useEffect(() => {
+        if (transactions.length > 0) {
+            verifyPendingTransactions(transactions);
+        }
+    }, [transactions.map(t => t.id + t.status).join(',')]); // Only run when tx list/status changes
 
     const pollPaymentVerification = async (orderId: string, attempts = 0) => {
         if (attempts >= 6) return;

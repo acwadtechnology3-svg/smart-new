@@ -17,6 +17,7 @@ import Trips from "./pages/Trips";
 import Customers from "./pages/Customers";
 import Wallet from "./pages/Wallet";
 import Promos from "./pages/Promos";
+import Referrals from "./pages/Referrals";
 import PromoBanners from '@/pages/PromoBanners';
 import Support from "./pages/Support";
 import Safety from "./pages/Safety";
@@ -67,6 +68,7 @@ const App = () => (
             <Route path="/wallet" element={<ProtectedPage page="wallet"><Wallet /></ProtectedPage>} />
             <Route path="/withdrawal-requests" element={<ProtectedPage page="withdrawal_requests"><WithdrawalRequests /></ProtectedPage>} />
             <Route path="/promos" element={<ProtectedPage page="promos"><Promos /></ProtectedPage>} />
+            <Route path="/referrals" element={<ProtectedPage page="promos"><Referrals /></ProtectedPage>} />
             <Route path="/popups" element={<ProtectedPage page="popups" requiredRoles={['super_admin', 'admin']}><AppPopups /></ProtectedPage>} />
             <Route path="/promo-banners" element={<ProtectedPage page="promo_banners" requiredRoles={['super_admin', 'admin']}><PromoBanners /></ProtectedPage>} />
             <Route path="/surge-zones" element={<ProtectedPage page="surge_zones" requiredRoles={['super_admin', 'admin']}><SurgeZones /></ProtectedPage>} />

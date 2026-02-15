@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Switch, Alert, ActivityIndicator, Platform, I18nManager } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, ActivityIndicator, I18nManager } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ArrowLeft, User, Bell, Globe, ChevronRight, Trash2, Moon, Sun, Smartphone } from 'lucide-react-native';
+import { ArrowLeft, User, Globe, ChevronRight, Trash2, Moon, Sun, Smartphone } from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
 import { apiRequest } from '../../services/backend';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -12,13 +12,11 @@ import { StatusBar } from 'expo-status-bar';
 export default function SettingsScreen() {
     const navigation = useNavigation();
     const { t, language, setLanguage, isRTL } = useLanguage();
-    const { colors, mode, setMode, resolvedScheme, tokens } = useTheme();
+    const { colors, mode, setMode, resolvedScheme } = useTheme();
     const isDark = resolvedScheme === 'dark';
-    const { spacing, radius } = tokens;
 
     const [loading, setLoading] = useState(false);
     const [user, setUser] = useState<any>(null);
-    const [notificationsEnabled, setNotificationsEnabled] = useState(true);
 
     useEffect(() => {
         loadSettings(true);
@@ -32,9 +30,6 @@ export default function SettingsScreen() {
                 const { user: cachedUser } = JSON.parse(session);
                 if (cachedUser) {
                     setUser(cachedUser);
-                    if (cachedUser.preferences) {
-                        setNotificationsEnabled(cachedUser.preferences.notifications ?? true);
-                    }
                 }
             }
 
@@ -50,9 +45,6 @@ export default function SettingsScreen() {
                     await AsyncStorage.setItem('userSession', JSON.stringify({ ...parsed, user: data.user }));
                 }
 
-                if (data.user.preferences) {
-                    setNotificationsEnabled(data.user.preferences.notifications ?? true);
-                }
             }
         } catch (error: any) {
             if (error?.code !== 'AUTH_SIGNED_OUT') {
@@ -63,27 +55,6 @@ export default function SettingsScreen() {
             setLoading(false);
         }
     };
-
-    const updatePreference = async (key: string, value: boolean) => {
-        try {
-            if (key === 'notifications') setNotificationsEnabled(value);
-
-            const updatedPreferences = {
-                notifications: key === 'notifications' ? value : notificationsEnabled,
-            };
-
-            await apiRequest('/users/profile', {
-                method: 'PUT',
-                body: JSON.stringify({
-                    preferences: updatedPreferences
-                })
-            });
-        } catch (error: any) {
-            Alert.alert(t('error'), t('updateFailed'));
-            if (key === 'notifications') setNotificationsEnabled(!value);
-        }
-    };
-
 
     const handleDeleteAccount = async () => {
         Alert.alert(
@@ -213,23 +184,6 @@ export default function SettingsScreen() {
 
                 <Text style={[styles.sectionHeader, { textAlign, color: colors.textSecondary }]}>{t('preferences')}</Text>
                 <View style={[styles.groupContainer, { paddingBottom: 16, backgroundColor: colors.surface, borderColor: colors.border }]}>
-                    <View style={[styles.row, rowStyle]}>
-                        <View style={[styles.rowLeft, rowStyle]}>
-                            <View style={[styles.iconBox, paddingStyle, { backgroundColor: colors.background }]}>
-                                <Bell size={20} color="#10B981" />
-                            </View>
-                            <Text style={[styles.label, { color: colors.textPrimary }]}>{t('notifications')}</Text>
-                        </View>
-                        <Switch
-                            value={notificationsEnabled}
-                            onValueChange={(val) => updatePreference('notifications', val)}
-                            trackColor={{ false: '#E5E7EB', true: '#10B981' }}
-                            thumbColor={Platform.OS === 'ios' ? undefined : (notificationsEnabled ? '#fff' : '#f4f3f4')}
-                        />
-                    </View>
-
-                    <View style={styles.divider} />
-
                     {/* Improved Language Selection UI */}
                     <View style={{ paddingHorizontal: 16, marginTop: 16 }}>
                         <View style={[rowStyle, { alignItems: 'center', marginBottom: 12 }]}>

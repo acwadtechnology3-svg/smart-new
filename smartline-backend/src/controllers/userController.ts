@@ -1,6 +1,34 @@
 import { Request, Response } from 'express';
 import { supabase } from '../config/supabase';
 
+const PROFILE_PHOTO_PERMISSION_PREFIX = 'profile_photo_url:';
+
+function normalizePermissions(input: unknown): string[] {
+  if (!Array.isArray(input)) return [];
+  return input
+    .map((item) => String(item || '').trim())
+    .filter((item) => item.length > 0);
+}
+
+function extractProfilePhotoFromPermissions(input: unknown): string | null {
+  const permissions = normalizePermissions(input);
+  const entry = permissions.find((item) => item.startsWith(PROFILE_PHOTO_PERMISSION_PREFIX));
+  if (!entry) return null;
+  const value = entry.slice(PROFILE_PHOTO_PERMISSION_PREFIX.length).trim();
+  return value.length > 0 ? value : null;
+}
+
+function setProfilePhotoInPermissions(input: unknown, profilePhotoUrl: string | null): string[] {
+  const permissions = normalizePermissions(input).filter(
+    (item) => !item.startsWith(PROFILE_PHOTO_PERMISSION_PREFIX)
+  );
+  const value = String(profilePhotoUrl || '').trim();
+  if (value) {
+    permissions.push(`${PROFILE_PHOTO_PERMISSION_PREFIX}${value}`);
+  }
+  return permissions;
+}
+
 export const deleteAccount = async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
@@ -55,7 +83,7 @@ export const getMe = async (req: Request, res: Response) => {
     // Fetch user details
     const { data: user, error } = await supabase
       .from('users')
-      .select('id, phone, full_name, email, role, balance, created_at')
+      .select('id, phone, full_name, email, role, balance, created_at, permissions')
       .eq('id', userId)
       .single();
 
@@ -64,7 +92,7 @@ export const getMe = async (req: Request, res: Response) => {
     }
 
     // If user is a driver or just to be safe, try to fetch driver profile photo
-    let profile_photo_url = null;
+    let profile_photo_url = extractProfilePhotoFromPermissions(user.permissions);
     if (user.role === 'driver') {
       const { data: driver } = await supabase
         .from('drivers')
@@ -72,14 +100,15 @@ export const getMe = async (req: Request, res: Response) => {
         .eq('id', userId)
         .single();
 
-      if (driver) {
+      if (driver?.profile_photo_url) {
         profile_photo_url = driver.profile_photo_url;
       }
     }
 
     // Combine data
+    const { permissions: _permissions, ...safeUser } = user as any;
     const responseData = {
-      ...user,
+      ...safeUser,
       profile_photo_url
     };
 
@@ -94,10 +123,23 @@ export const updateProfile = async (req: Request, res: Response) => {
     const userId = req.user!.id;
     const { full_name, email, preferences, profile_photo_url } = req.body;
 
+    const { data: currentUser, error: currentUserError } = await supabase
+      .from('users')
+      .select('role, permissions')
+      .eq('id', userId)
+      .single();
+
+    if (currentUserError || !currentUser) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
     const updates: any = {};
     if (full_name) updates.full_name = full_name;
     if (email) updates.email = email;
     if (preferences) updates.preferences = preferences;
+    if (profile_photo_url !== undefined) {
+      updates.permissions = setProfilePhotoInPermissions(currentUser.permissions, profile_photo_url);
+    }
 
     // Update 'users' table
     const { data: userData, error: userError } = await supabase
@@ -111,8 +153,8 @@ export const updateProfile = async (req: Request, res: Response) => {
       return res.status(400).json({ error: userError.message });
     }
 
-    // Update 'drivers' table if profile_photo_url is present
-    if (profile_photo_url) {
+    // Keep driver profile photo in sync for driver accounts.
+    if (profile_photo_url !== undefined && currentUser.role === 'driver') {
       const { error: driverError } = await supabase
         .from('drivers')
         .update({ profile_photo_url })
@@ -124,7 +166,15 @@ export const updateProfile = async (req: Request, res: Response) => {
       }
     }
 
-    res.json({ success: true, user: userData });
+    const { permissions: _permissions, ...safeUserData } = userData as any;
+    const responseUser = {
+      ...safeUserData,
+      profile_photo_url: profile_photo_url !== undefined
+        ? (profile_photo_url || null)
+        : extractProfilePhotoFromPermissions(userData?.permissions)
+    };
+
+    res.json({ success: true, user: responseUser });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

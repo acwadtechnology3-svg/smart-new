@@ -33,6 +33,7 @@ import intercityRoutes from './routes/intercityRoutes';
 import bannerRoutes from './routes/bannerRoutes';
 import notificationRoutes from './routes/notificationRoutes';
 import referralRoutes from './routes/referralRoutes';
+import savedLocationRoutes from './routes/savedLocationRoutes';
 import configRoutes from './routes/configRoutes';
 import adminRoutes from './routes/adminRoutes'; // Phase 1 & 2
 import { checkDatabaseConnection } from './config/database';
@@ -113,6 +114,7 @@ mount('/intercity', intercityRoutes);
 mount('/banners', bannerRoutes);
 mount('/notifications', notificationRoutes);
 mount('/referrals', referralRoutes);
+mount('/saved-locations', savedLocationRoutes);
 mount('/config', configRoutes);
 
 // ===== Health Check =====

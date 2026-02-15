@@ -1,16 +1,17 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, Modal, TouchableOpacity, Dimensions, ActivityIndicator, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Dimensions, ActivityIndicator, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import MapView, { Region, Marker } from 'react-native-maps';
 import MapTileLayer from '../MapTileLayer';
+import { EMPTY_MAP_STYLE, DARK_EMPTY_MAP_STYLE } from '../../constants/MapStyles';
 import { X, MapPin, Locate, Navigation } from 'lucide-react-native';
 import { Colors } from '../../constants/Colors';
 import { useLanguage } from '../../context/LanguageContext';
+import { useTheme } from '../../theme/useTheme';
 import * as Location from 'expo-location';
 import { reverseGeocode } from '../../services/mapService';
 
 interface MapPickerModalProps {
-    visible: boolean;
     onClose: () => void;
     onLocationSelected: (address: string, lat: number, lng: number) => void;
     title: string;
@@ -25,8 +26,9 @@ const DEFAULT_REGION: Region = {
     longitudeDelta: 0.015,
 };
 
-export default function MapPickerModal({ visible, onClose, onLocationSelected, title }: MapPickerModalProps) {
+export default function MapPickerModal({ onClose, onLocationSelected, title }: MapPickerModalProps) {
     const { t, isRTL } = useLanguage();
+    const { colors, isDark } = useTheme();
     const mapRef = useRef<MapView>(null);
     const [region, setRegion] = useState<Region>(DEFAULT_REGION);
     const [loading, setLoading] = useState(false);
@@ -35,11 +37,6 @@ export default function MapPickerModal({ visible, onClose, onLocationSelected, t
     const [isMapReady, setIsMapReady] = useState(false);
 
     useEffect(() => {
-        if (!visible) {
-            setIsMapReady(false);
-            return;
-        }
-
         let isMounted = true;
         setAddressPreview('');
 
@@ -90,7 +87,7 @@ export default function MapPickerModal({ visible, onClose, onLocationSelected, t
         return () => {
             isMounted = false;
         };
-    }, [visible, isMapReady]);
+    }, [isMapReady]);
 
     const handleRegionChangeComplete = (nextRegion: Region) => {
         setRegion(nextRegion);
@@ -144,14 +141,12 @@ export default function MapPickerModal({ visible, onClose, onLocationSelected, t
         setLoading(true);
 
         try {
-            const result = await reverseGeocode(region.latitude, region.longitude, isRTL ? 'ar' : 'en');
-            const address = result || addressPreview || `${region.latitude.toFixed(5)}, ${region.longitude.toFixed(5)}`;
-
+            // Do not block user confirmation on network geocoding latency.
+            const address = addressPreview || `${region.latitude.toFixed(5)}, ${region.longitude.toFixed(5)}`;
             onLocationSelected(address, region.latitude, region.longitude);
             onClose();
         } catch (error) {
-            console.log('Confirm geocoding error:', error);
-            // Fallback to preview or coordinates
+            console.log('Confirm location error:', error);
             const address = addressPreview || `${region.latitude.toFixed(5)}, ${region.longitude.toFixed(5)}`;
             onLocationSelected(address, region.latitude, region.longitude);
             onClose();
@@ -161,30 +156,24 @@ export default function MapPickerModal({ visible, onClose, onLocationSelected, t
     };
 
     return (
-        <Modal
-            visible={visible}
-            animationType="slide"
-            transparent={false}
-            onRequestClose={onClose}
-            statusBarTranslucent
-        >
-            <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+            <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top', 'left', 'right']}>
                 {/* Header */}
-                <View style={[styles.header, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-                    <TouchableOpacity onPress={onClose} style={styles.closeButton} activeOpacity={0.7}>
-                        <X size={22} color="#1F2937" />
+                <View style={[styles.header, { flexDirection: isRTL ? 'row-reverse' : 'row', backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
+                    <TouchableOpacity onPress={onClose} style={[styles.closeButton, { backgroundColor: colors.surface2 }]} activeOpacity={0.7}>
+                        <X size={22} color={colors.textPrimary} />
                     </TouchableOpacity>
                     <View style={styles.headerCenter}>
-                        <Navigation size={18} color={Colors.primary} style={{ marginRight: isRTL ? 0 : 8, marginLeft: isRTL ? 8 : 0 }} />
-                        <Text style={styles.headerTitle}>{title}</Text>
+                        <Navigation size={18} color={colors.primary} style={{ marginRight: isRTL ? 0 : 8, marginLeft: isRTL ? 8 : 0 }} />
+                        <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>{title}</Text>
                     </View>
                     <View style={{ width: 40 }} />
                 </View>
 
                 {/* Map */}
                 <MapView
+                    key={`chatbot-map-picker-${isDark ? 'dark' : 'light'}`}
                     ref={mapRef}
-                    style={styles.map}
+                    style={[styles.map, { backgroundColor: isDark ? '#212121' : '#f5f5f5' }]}
                     initialRegion={region}
                     onRegionChangeComplete={handleRegionChangeComplete}
                     onMapReady={() => setIsMapReady(true)}
@@ -194,59 +183,62 @@ export default function MapPickerModal({ visible, onClose, onLocationSelected, t
                     rotateEnabled={false}
                     pitchEnabled={false}
                     toolbarEnabled={false}
+                    mapType={Platform.OS === 'android' ? 'none' : 'standard'}
+                    customMapStyle={isDark ? DARK_EMPTY_MAP_STYLE : EMPTY_MAP_STYLE}
+                    userInterfaceStyle={isDark ? 'dark' : 'light'}
                 >
-                    <MapTileLayer isDark={false} />
+                    <MapTileLayer isDark={isDark} />
                 </MapView>
 
                 {/* Center Pin */}
                 <View pointerEvents="none" style={styles.centerMarkerContainer}>
                     <View style={styles.pinWrapper}>
-                        <MapPin size={44} color={Colors.primary} fill={Colors.primary} strokeWidth={2.5} />
-                        <View style={styles.pinPulse} />
+                        <MapPin size={44} color={colors.primary} fill={colors.primary} strokeWidth={2.5} />
+                        <View style={[styles.pinPulse, { backgroundColor: colors.primary }]} />
                     </View>
                     <View style={styles.markerShadow} />
                 </View>
 
                 {/* Bottom Controls */}
-                <View style={styles.bottomSheet}>
-                    <View style={styles.dragHandle} />
+                <View style={[styles.bottomSheet, { backgroundColor: colors.surface, shadowColor: colors.shadow }]}>
+                    <View style={[styles.dragHandle, { backgroundColor: colors.border }]} />
 
-                    <View style={styles.addressCard}>
+                    <View style={[styles.addressCard, { backgroundColor: colors.surface2, borderColor: colors.border }]}>
                         <View style={[styles.addressHeader, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-                            <MapPin size={16} color="#64748B" />
-                            <Text style={styles.addressLabel}>
+                            <MapPin size={16} color={colors.textMuted} />
+                            <Text style={[styles.addressLabel, { color: colors.textMuted }]}>
                                 {isRTL ? 'الموقع المحدد' : 'Selected Location'}
                             </Text>
                         </View>
-                        <Text style={[styles.addressValue, { textAlign: isRTL ? 'right' : 'left' }]} numberOfLines={3}>
+                        <Text style={[styles.addressValue, { textAlign: isRTL ? 'right' : 'left', color: colors.textPrimary }]} numberOfLines={3}>
                             {addressPreview || (isRTL ? 'جاري التحميل...' : 'Loading...')}
                         </Text>
                     </View>
 
                     <View style={[styles.actionsRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
                         <TouchableOpacity
-                            style={styles.locationButton}
+                            style={[styles.locationButton, { backgroundColor: colors.surface, borderColor: colors.border, shadowColor: colors.shadow }]}
                             onPress={handleCenterLocation}
                             activeOpacity={0.7}
                             disabled={locating}
                         >
                             {locating ? (
-                                <ActivityIndicator size="small" color={Colors.primary} />
+                                <ActivityIndicator size="small" color={colors.primary} />
                             ) : (
-                                <Locate size={22} color={Colors.primary} strokeWidth={2.5} />
+                                <Locate size={22} color={colors.primary} strokeWidth={2.5} />
                             )}
                         </TouchableOpacity>
 
                         <TouchableOpacity
-                            style={[styles.confirmButton, loading && styles.disabledButton]}
+                            style={[styles.confirmButton, { backgroundColor: colors.primary, shadowColor: colors.primary }, loading && styles.disabledButton]}
                             onPress={handleConfirm}
                             activeOpacity={0.85}
                             disabled={loading}
                         >
                             {loading ? (
-                                <ActivityIndicator size="small" color="#FFFFFF" />
+                                <ActivityIndicator size="small" color={colors.textOnPrimary} />
                             ) : (
-                                <Text style={styles.confirmButtonText}>
+                                <Text style={[styles.confirmButtonText, { color: colors.textOnPrimary }]}>
                                     {isRTL ? 'تأكيد الموقع' : 'Confirm Location'}
                                 </Text>
                             )}
@@ -254,7 +246,6 @@ export default function MapPickerModal({ visible, onClose, onLocationSelected, t
                     </View>
                 </View>
             </SafeAreaView>
-        </Modal>
     );
 }
 

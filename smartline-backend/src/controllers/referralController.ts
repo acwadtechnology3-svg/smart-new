@@ -71,7 +71,43 @@ export const getPrograms = async (req: Request, res: Response) => {
     try {
         const { data, error } = await supabase.from('referral_programs').select('*').order('created_at', { ascending: false });
         if (error) throw error;
-        res.json(data);
+        res.json({ programs: data });
+    } catch (error: any) {
+        res.status(500).json({ error: error.message });
+    }
+};
+
+export const getAdminStats = async (req: Request, res: Response) => {
+    try {
+        // Get total count
+        const { count, error: countError } = await supabase
+            .from('referrals')
+            .select('*', { count: 'exact', head: true });
+
+        if (countError) throw countError;
+
+        // Get recent referrals
+        const { data: stats, error: listError } = await supabase
+            .from('referrals')
+            .select(`
+                *,
+                referrer:referrer_id(phone, email),
+                referee:referee_id(phone, email)
+            `)
+            .order('created_at', { ascending: false })
+            .limit(50);
+
+        if (listError) throw listError;
+
+        // Aggregation (Mock for now or simple query)
+        const summary = {
+            total: count || 0,
+            pending: 0,
+            completed: 0,
+            total_rewards: 0
+        };
+
+        res.json({ stats, summary });
     } catch (error: any) {
         res.status(500).json({ error: error.message });
     }

@@ -108,7 +108,7 @@ export default function DriverHistoryScreen() {
             <FlatList
                 data={trips}
                 renderItem={renderItem}
-                keyExtractor={(item) => item.id}
+                keyExtractor={(item, index) => item.id || `trip-${index}`}
                 contentContainerStyle={styles.listContent}
                 ListEmptyComponent={
                     <View style={styles.emptyContainer}>

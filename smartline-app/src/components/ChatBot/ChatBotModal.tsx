@@ -13,11 +13,13 @@ import {
     ActivityIndicator,
     Animated,
     PanResponder,
-    Dimensions
+    Dimensions,
+    Image
 } from 'react-native';
 import { X, Send, MapPin } from 'lucide-react-native';
 import { Colors } from '../../constants/Colors';
 import { useLanguage } from '../../context/LanguageContext';
+import { useTheme } from '../../theme/useTheme';
 import { chatBotService, ChatMessage, QuickAction } from '../../services/chatBotService';
 import MessageBubble from './MessageBubble';
 import QuickActions from './QuickActions';
@@ -75,12 +77,14 @@ function calculateDuration(distanceKm: number): number {
 
 export default function ChatBotModal({ visible, onClose }: ChatBotModalProps) {
     const { t, isRTL } = useLanguage();
+    const { colors, isDark } = useTheme();
     const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [inputText, setInputText] = useState('');
     const [loading, setLoading] = useState(false);
     const [showMapPicker, setShowMapPicker] = useState(false);
     const [mapPickerTitle, setMapPickerTitle] = useState('');
+    const [mapSelectionTarget, setMapSelectionTarget] = useState<'pickup' | 'destination' | null>(null);
     const scrollViewRef = useRef<ScrollView>(null);
 
     // Animation values
@@ -231,32 +235,39 @@ export default function ChatBotModal({ visible, onClose }: ChatBotModalProps) {
 
     const handleSelectOnMap = () => {
         const stage = chatBotService.getCurrentStage();
+        const target: 'pickup' | 'destination' = stage === 'destination' ? 'destination' : 'pickup';
 
-        if (stage === 'pickup' || stage === 'greeting') {
+        setMapSelectionTarget(target);
+
+        if (target === 'pickup') {
             setMapPickerTitle('اختر موقع الانطلاق');
             setShowMapPicker(true);
-        } else if (stage === 'destination') {
+        } else {
             setMapPickerTitle('اختر الوجهة');
             setShowMapPicker(true);
         }
     };
 
     const handleMapLocationSelected = (address: string, lat: number, lng: number) => {
+        setShowMapPicker(false);
         const stage = chatBotService.getCurrentStage();
-        console.log('🗺️ [ChatBotModal] Map location selected:', { address, lat, lng, stage });
+        const target = mapSelectionTarget ?? (stage === 'destination' ? 'destination' : 'pickup');
+        console.log('🗺️ [ChatBotModal] Map location selected:', { address, lat, lng, stage, target });
 
-        if (stage === 'pickup' || stage === 'greeting') {
+        if (target === 'pickup') {
             addUserMessage(address);
             const botResponse = chatBotService.processPickupLocation(address, lat, lng);
             console.log('📍 [ChatBotModal] Pickup response:', botResponse);
             addMessage(botResponse);
-        } else if (stage === 'destination') {
+        } else {
             addUserMessage(address);
             const botResponse = chatBotService.processDestination(address, lat, lng);
             console.log('🎯 [ChatBotModal] Destination response:', botResponse);
             console.log('📝 [ChatBotModal] Response text length:', botResponse.text.length);
             addMessage(botResponse);
         }
+
+        setMapSelectionTarget(null);
     };
 
     const handleCarTypeSelection = (carType: string) => {
@@ -335,11 +346,14 @@ export default function ChatBotModal({ visible, onClose }: ChatBotModalProps) {
             chatBotService.resetConversation();
             setMessages([]);
             setShowMapPicker(false);
+            setMapSelectionTarget(null);
             onClose();
         });
     };
 
     const lastMessage = messages[messages.length - 1];
+    const heroGradientColors: [string, string] = isDark ? ['#0F172A', '#111827'] : ['#DBEAFE', '#FFFFFF'];
+    const sendGradientColors: [string, string] = isDark ? ['#1D4ED8', colors.primary] : ['#2563EB', colors.primary];
 
     return (
         <>
@@ -372,38 +386,53 @@ export default function ChatBotModal({ visible, onClose }: ChatBotModalProps) {
                         <Animated.View
                             style={[
                                 styles.sheet,
-                                { transform: [{ translateY }] }
+                                {
+                                    transform: [{ translateY }],
+                                    backgroundColor: colors.surface,
+                                    shadowColor: colors.shadow,
+                                }
                             ]}
                         >
                             <View {...panResponder.panHandlers} style={styles.dragHandleArea}>
-                                <View style={styles.handle} />
+                                <View style={[styles.handle, { backgroundColor: colors.border }]} />
                             </View>
 
                             <LinearGradient
-                                colors={['#DBEAFE', '#FFFFFF']}
+                                colors={heroGradientColors}
                                 start={{ x: 0, y: 0 }}
                                 end={{ x: 1, y: 1 }}
                                 style={styles.hero}
                             >
                                 <View style={[styles.heroHeader, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-                                    <View style={styles.avatar}>
-                                        <Text style={styles.avatarEmoji}>🤖</Text>
+                                    <View style={[styles.avatar, { backgroundColor: 'transparent', shadowColor: 'transparent', elevation: 0 }]}>
+                                        <Image
+                                            source={require('../../../assets/images/chatbot_icon.png')}
+                                            style={{ width: 48, height: 48, resizeMode: 'cover', borderRadius: 14 }}
+                                        />
                                     </View>
                                     <View style={styles.heroText}>
-                                        <Text style={styles.heroTitle}>مساعد الحجز الذكي</Text>
-                                        <Text style={styles.heroSubtitle}>خطوات بسيطة لحجز رحلتك</Text>
-                                        <View style={[styles.heroBadge, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-                                            <MapPin size={14} color="#0F172A" />
-                                            <Text style={styles.heroBadgeText}>اختر المواقع بسهولة</Text>
+                                        <Text style={[styles.heroTitle, { color: colors.textPrimary }]}>مساعد الحجز الذكي</Text>
+                                        <Text style={[styles.heroSubtitle, { color: colors.textSecondary }]}>خطوات بسيطة لحجز رحلتك</Text>
+                                        <View
+                                            style={[
+                                                styles.heroBadge,
+                                                {
+                                                    flexDirection: isRTL ? 'row-reverse' : 'row',
+                                                    backgroundColor: isDark ? 'rgba(51,65,85,0.45)' : 'rgba(248,250,252,0.7)',
+                                                },
+                                            ]}
+                                        >
+                                            <MapPin size={14} color={colors.textPrimary} />
+                                            <Text style={[styles.heroBadgeText, { color: colors.textPrimary }]}>اختر المواقع بسهولة</Text>
                                         </View>
                                     </View>
-                                    <TouchableOpacity onPress={handleClose} style={styles.closeButton}>
-                                        <X size={22} color="#0F172A" />
+                                    <TouchableOpacity onPress={handleClose} style={[styles.closeButton, { backgroundColor: colors.surface2 }]}>
+                                        <X size={22} color={colors.textPrimary} />
                                     </TouchableOpacity>
                                 </View>
                             </LinearGradient>
 
-                            <View style={styles.messagesWrapper}>
+                            <View style={[styles.messagesWrapper, { backgroundColor: colors.surface }]}>
                                 <ScrollView
                                     ref={scrollViewRef}
                                     style={styles.messagesContainer}
@@ -420,8 +449,8 @@ export default function ChatBotModal({ visible, onClose }: ChatBotModalProps) {
                                     ))}
                                     {loading && (
                                         <View style={styles.loadingContainer}>
-                                            <ActivityIndicator color={Colors.primary} />
-                                            <Text style={styles.loadingText}>جاري المعالجة...</Text>
+                                            <ActivityIndicator color={colors.primary} />
+                                            <Text style={[styles.loadingText, { color: colors.textSecondary }]}>جاري المعالجة...</Text>
                                         </View>
                                     )}
                                 </ScrollView>
@@ -429,13 +458,22 @@ export default function ChatBotModal({ visible, onClose }: ChatBotModalProps) {
 
                             {/* Trip Summary Card - Shows when in confirmation stage */}
                             {chatBotService.getCurrentStage() === 'confirmation' && (
-                                <View style={styles.tripSummaryCard}>
-                                    <Text style={styles.tripSummaryTitle}>📋 ملخص الرحلة</Text>
+                                <View
+                                    style={[
+                                        styles.tripSummaryCard,
+                                        {
+                                            backgroundColor: isDark ? colors.surface2 : '#F0F9FF',
+                                            borderColor: isDark ? colors.border : '#BFDBFE',
+                                            shadowColor: colors.shadow,
+                                        },
+                                    ]}
+                                >
+                                    <Text style={[styles.tripSummaryTitle, { color: colors.textPrimary }]}>📋 ملخص الرحلة</Text>
 
                                     <View style={styles.tripInfoRow}>
-                                        <View style={styles.tripInfoItem}>
-                                            <Text style={styles.tripInfoLabel}>🚗 نوع السيارة</Text>
-                                            <Text style={styles.tripInfoValue}>
+                                        <View style={[styles.tripInfoItem, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                                            <Text style={[styles.tripInfoLabel, { color: colors.textSecondary }]}>🚗 نوع السيارة</Text>
+                                            <Text style={[styles.tripInfoValue, { color: colors.textPrimary }]}>
                                                 {chatBotService.getBookingData().carType === 'saver' && 'موفر'}
                                                 {chatBotService.getBookingData().carType === 'comfort' && 'مريح'}
                                                 {chatBotService.getBookingData().carType === 'vip' && 'في آي بي'}
@@ -445,9 +483,9 @@ export default function ChatBotModal({ visible, onClose }: ChatBotModalProps) {
                                     </View>
 
                                     <View style={styles.tripStatsRow}>
-                                        <View style={styles.tripStat}>
-                                            <Text style={styles.tripStatLabel}>📏 المسافة</Text>
-                                            <Text style={styles.tripStatValue}>
+                                        <View style={[styles.tripStat, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                                            <Text style={[styles.tripStatLabel, { color: colors.textSecondary }]}>📏 المسافة</Text>
+                                            <Text style={[styles.tripStatValue, { color: colors.textPrimary }]}>
                                                 {(() => {
                                                     const booking = chatBotService.getBookingData();
                                                     if (booking.pickup && booking.destination) {
@@ -464,9 +502,9 @@ export default function ChatBotModal({ visible, onClose }: ChatBotModalProps) {
                                             </Text>
                                         </View>
 
-                                        <View style={styles.tripStat}>
-                                            <Text style={styles.tripStatLabel}>⏱️ الوقت</Text>
-                                            <Text style={styles.tripStatValue}>
+                                        <View style={[styles.tripStat, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                                            <Text style={[styles.tripStatLabel, { color: colors.textSecondary }]}>⏱️ الوقت</Text>
+                                            <Text style={[styles.tripStatValue, { color: colors.textPrimary }]}>
                                                 {(() => {
                                                     const booking = chatBotService.getBookingData();
                                                     if (booking.pickup && booking.destination) {
@@ -484,9 +522,9 @@ export default function ChatBotModal({ visible, onClose }: ChatBotModalProps) {
                                             </Text>
                                         </View>
 
-                                        <View style={styles.tripStat}>
-                                            <Text style={styles.tripStatLabel}>💰 السعر</Text>
-                                            <Text style={[styles.tripStatValue, styles.priceValue]}>
+                                        <View style={[styles.tripStat, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                                            <Text style={[styles.tripStatLabel, { color: colors.textSecondary }]}>💰 السعر</Text>
+                                            <Text style={[styles.tripStatValue, styles.priceValue, { color: colors.primary }]}>
                                                 {(() => {
                                                     const booking = chatBotService.getBookingData();
                                                     if (booking.pickup && booking.destination && booking.carType) {
@@ -508,7 +546,7 @@ export default function ChatBotModal({ visible, onClose }: ChatBotModalProps) {
                             )}
 
                             {lastMessage?.quickActions && (
-                                <View style={styles.quickActionsWrapper}>
+                                <View style={[styles.quickActionsWrapper, { backgroundColor: colors.surface }]}>
                                     <QuickActions
                                         actions={lastMessage.quickActions}
                                         onActionPress={handleActionPress}
@@ -517,10 +555,19 @@ export default function ChatBotModal({ visible, onClose }: ChatBotModalProps) {
                             )}
 
                             {chatBotService.getCurrentStage() === 'destination' && (
-                                <View style={[styles.inputContainer, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+                                <View style={[styles.inputContainer, { flexDirection: isRTL ? 'row-reverse' : 'row', backgroundColor: colors.surface }]}>
                                     <TextInput
-                                        style={[styles.input, { textAlign: isRTL ? 'right' : 'left' }]}
+                                        style={[
+                                            styles.input,
+                                            {
+                                                textAlign: isRTL ? 'right' : 'left',
+                                                backgroundColor: colors.inputBg,
+                                                color: colors.textPrimary,
+                                                borderColor: colors.inputBorder,
+                                            },
+                                        ]}
                                         placeholder="اكتب عنوان الوجهة..."
+                                        placeholderTextColor={colors.textMuted}
                                         value={inputText}
                                         onChangeText={setInputText}
                                         onSubmitEditing={handleSendMessage}
@@ -532,7 +579,7 @@ export default function ChatBotModal({ visible, onClose }: ChatBotModalProps) {
                                         activeOpacity={0.9}
                                     >
                                         <LinearGradient
-                                            colors={['#2563EB', Colors.primary]}
+                                            colors={sendGradientColors}
                                             start={{ x: 0, y: 0 }}
                                             end={{ x: 1, y: 1 }}
                                             style={[styles.sendGradient, { opacity: inputText.trim() ? 1 : 0.6 }]}
@@ -544,15 +591,21 @@ export default function ChatBotModal({ visible, onClose }: ChatBotModalProps) {
                             )}
                         </Animated.View>
                     </KeyboardAvoidingView>
+
+                    {showMapPicker && (
+                        <View style={[styles.mapPickerOverlay, { backgroundColor: colors.background }]}>
+                            <MapPickerModal
+                                onClose={() => {
+                                    setShowMapPicker(false);
+                                    setMapSelectionTarget(null);
+                                }}
+                                onLocationSelected={handleMapLocationSelected}
+                                title={mapPickerTitle}
+                            />
+                        </View>
+                    )}
                 </View>
             </Modal>
-
-            <MapPickerModal
-                visible={showMapPicker}
-                onClose={() => setShowMapPicker(false)}
-                onLocationSelected={handleMapLocationSelected}
-                title={mapPickerTitle}
-            />
         </>
     );
 }
@@ -571,6 +624,11 @@ const styles = StyleSheet.create({
         flex: 1,
         justifyContent: 'flex-end',
         zIndex: 2,
+    },
+    mapPickerOverlay: {
+        ...StyleSheet.absoluteFillObject,
+        zIndex: 50,
+        backgroundColor: '#FFFFFF',
     },
     sheet: {
         backgroundColor: '#FFFFFF',
@@ -697,6 +755,8 @@ const styles = StyleSheet.create({
         height: 52,
         borderRadius: 26,
         backgroundColor: '#F1F5F9',
+        borderWidth: 1,
+        borderColor: '#E2E8F0',
         paddingHorizontal: 18,
         fontSize: 16,
         color: '#0F172A',
@@ -785,3 +845,4 @@ const styles = StyleSheet.create({
         fontSize: 16,
     },
 });
+

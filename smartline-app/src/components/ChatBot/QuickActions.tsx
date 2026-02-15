@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-nati
 import { QuickAction } from '../../services/chatBotService';
 import { Colors } from '../../constants/Colors';
 import { useLanguage } from '../../context/LanguageContext';
+import { useTheme } from '../../theme/useTheme';
 
 interface QuickActionsProps {
     actions: QuickAction[];
@@ -11,6 +12,7 @@ interface QuickActionsProps {
 
 export default function QuickActions({ actions, onActionPress }: QuickActionsProps) {
     const { isRTL } = useLanguage();
+    const { colors, isDark } = useTheme();
 
     if (!actions || actions.length === 0) return null;
 
@@ -24,11 +26,18 @@ export default function QuickActions({ actions, onActionPress }: QuickActionsPro
                 {actions.map((action) => (
                     <TouchableOpacity
                         key={action.id}
-                        style={styles.actionButton}
+                        style={[
+                            styles.actionButton,
+                            {
+                                backgroundColor: isDark ? colors.surface2 : colors.surface,
+                                borderColor: colors.primary,
+                                shadowColor: colors.shadow,
+                            },
+                        ]}
                         onPress={() => onActionPress(action)}
                         activeOpacity={0.7}
                     >
-                        <Text style={styles.actionText}>{action.label}</Text>
+                        <Text style={[styles.actionText, { color: colors.primary }]}>{action.label}</Text>
                     </TouchableOpacity>
                 ))}
             </ScrollView>
