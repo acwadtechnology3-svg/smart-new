@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { getDriverImageUrl } from "@/lib/media";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -137,7 +138,7 @@ const DriverRequests = () => {
             <p className="text-xs font-medium text-gray-500">{label}</p>
             <div className="border rounded-md overflow-hidden bg-gray-50 aspect-video flex items-center justify-center">
                 {url ? (
-                    <img src={url} alt={label} className="w-full h-full object-contain" />
+                    <img src={getDriverImageUrl(url)} alt={label} className="w-full h-full object-contain" />
                 ) : (
                     <span className="text-xs text-gray-400">No Image</span>
                 )}
@@ -177,7 +178,7 @@ const DriverRequests = () => {
                                 <div className="aspect-video bg-gray-100 relative">
                                     {driver.profile_photo_url ? (
                                         <img
-                                            src={driver.profile_photo_url}
+                                            src={getDriverImageUrl(driver.profile_photo_url)}
                                             alt={driver.users?.full_name}
                                             className="w-full h-full object-cover"
                                         />
@@ -288,7 +289,7 @@ const DriverRequests = () => {
                                                             <h3 className="font-semibold text-lg border-b pb-2 mb-3">Profile Photo</h3>
                                                             <div className="w-40 h-40 border rounded-full overflow-hidden bg-gray-100 mx-auto">
                                                                 {driver.profile_photo_url ? (
-                                                                    <img src={driver.profile_photo_url} className="w-full h-full object-cover" />
+                                                                    <img src={getDriverImageUrl(driver.profile_photo_url)} className="w-full h-full object-cover" />
                                                                 ) : (
                                                                     <div className="flex items-center justify-center h-full text-gray-400">No Photo</div>
                                                                 )}

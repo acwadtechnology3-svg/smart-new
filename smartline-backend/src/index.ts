@@ -7,6 +7,7 @@ import express from 'express';
 import http from 'http';
 import cors from 'cors';
 import helmet from 'helmet';
+import path from 'path';
 import { config } from './config/env';
 import { logger } from './logger';
 import { requestLogger } from './middleware/requestLogger';
@@ -74,9 +75,13 @@ const corsOptions = {
 };
 app.use(cors(corsOptions));
 
-// Body parser
-app.use(express.json({ limit: '1mb' }));
-app.use(express.urlencoded({ extended: true, limit: '1mb' }));
+// Body parser (raised limits to handle base64 image uploads)
+app.use(express.json({ limit: '15mb' }));
+app.use(express.urlencoded({ extended: true, limit: '15mb' }));
+
+// Static files for driver images (stored on filesystem)
+const driverUploadDir = process.env.DRIVER_UPLOAD_DIR || 'C:/Users/Ezzat/Desktop/smartline-fromislam/smart-new/driver-images';
+app.use('/driver-images', express.static(driverUploadDir, { maxAge: '7d', fallthrough: true }));
 
 // Disable X-Powered-By header
 app.disable('x-powered-by');

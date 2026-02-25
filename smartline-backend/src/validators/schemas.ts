@@ -71,8 +71,14 @@ export const verifyOtpSchema = z.object({
   code: z.string().length(4, 'OTP code must be 4 digits'),
 });
 
+export const resetPasswordSchema = z.object({
+  phone: phoneSchema,
+  newPassword: passwordSchema,
+});
+
 export type SendOtpInput = z.infer<typeof sendOtpSchema>;
 export type VerifyOtpInput = z.infer<typeof verifyOtpSchema>;
+export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
 
 // ===== Trip Schemas =====
 

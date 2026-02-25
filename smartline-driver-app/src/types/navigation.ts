@@ -1,5 +1,6 @@
 export type RootStackParamList = {
     SplashScreen: undefined;
+    Onboarding: undefined;
     PhoneInput: undefined;
     Password: { phone: string };
     Signup: { phone: string };

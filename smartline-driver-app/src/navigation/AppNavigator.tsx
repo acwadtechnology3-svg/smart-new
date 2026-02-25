@@ -1,13 +1,16 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { NavigationContainer, DefaultTheme, DarkTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../types/navigation';
 import { useTheme } from '../theme/useTheme';
+import { TextInput } from 'react-native';
 
 import SplashScreen from '../screens/Auth/SplashScreen';
+import OnboardingScreen from '../screens/Auth/OnboardingScreen';
 import PhoneInputScreen from '../screens/Auth/PhoneInputScreen';
 import OTPVerificationScreen from '../screens/Auth/OTPVerificationScreen';
 import PasswordScreen from '../screens/Auth/PasswordScreen';
+import ResetPasswordScreen from '../screens/Auth/ResetPasswordScreen';
 import SignupScreen from '../screens/Auth/SignupScreen';
 import DriverSignupScreen from '../screens/Auth/DriverSignupScreen';
 import DriverVehicleScreen from '../screens/Auth/DriverVehicleScreen';
@@ -24,6 +27,7 @@ import DriverActiveTripScreen from '../screens/Driver/DriverActiveTripScreen';
 import DriverWalletScreen from '../screens/Driver/DriverWalletScreen';
 import DriverChangeVehicleScreen from '../screens/Driver/DriverChangeVehicleScreen';
 import SupportChatScreen from '../screens/Driver/SupportChatScreen';
+import ChatScreen from '../screens/Driver/ChatScreen';
 
 import HelpScreen from '../screens/Menu/HelpScreen';
 import MessagesScreen from '../screens/Menu/MessagesScreen';
@@ -41,6 +45,17 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
 export default function AppNavigator() {
     const navigationRef = React.useRef<any>(null);
     const { colors, resolvedScheme } = useTheme();
+
+    // Apply theme-aware defaults to all TextInputs
+    useEffect(() => {
+        const ti = TextInput as any;
+        const existing = ti.defaultProps || {};
+        ti.defaultProps = {
+            ...existing,
+            placeholderTextColor: colors.textMuted,
+            style: [existing.style, { color: colors.textPrimary }],
+        };
+    }, [colors.textMuted, colors.textPrimary]);
 
     React.useEffect(() => {
         if (navigationRef.current) {
@@ -72,9 +87,11 @@ export default function AppNavigator() {
                 }}
             >
                 <Stack.Screen name="SplashScreen" component={SplashScreen} />
+                <Stack.Screen name="Onboarding" component={OnboardingScreen} />
                 <Stack.Screen name="PhoneInput" component={PhoneInputScreen} />
                 <Stack.Screen name="OTPVerification" component={OTPVerificationScreen} />
                 <Stack.Screen name="Password" component={PasswordScreen} />
+                <Stack.Screen name="ResetPassword" component={ResetPasswordScreen} />
                 <Stack.Screen name="Signup" component={SignupScreen} />
 
                 <Stack.Screen name="DriverSignup" component={DriverSignupScreen} />
@@ -91,6 +108,7 @@ export default function AppNavigator() {
                 <Stack.Screen name="DriverWallet" component={DriverWalletScreen} />
                 <Stack.Screen name="DriverChangeVehicle" component={DriverChangeVehicleScreen} />
                 <Stack.Screen name="SupportChat" component={SupportChatScreen} />
+                <Stack.Screen name="Chat" component={ChatScreen} />
 
                 {/* Menu Screens */}
                 <Stack.Screen name="Help" component={HelpScreen} />

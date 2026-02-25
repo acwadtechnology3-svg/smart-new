@@ -20,8 +20,18 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { getDriverImageUrl } from '@/lib/media';
 import { toast } from 'sonner';
 import { Filter, Loader2, MoreHorizontal, Search, Star } from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Badge } from '@/components/ui/badge';
 
 type DriverStatus = 'pending' | 'approved' | 'rejected' | 'banned';
 
@@ -45,9 +55,25 @@ interface DriverRow {
   } | null;
 }
 
+type DriverDetail = DriverRow & {
+  id_front_url?: string | null;
+  id_back_url?: string | null;
+  license_front_url?: string | null;
+  license_back_url?: string | null;
+  vehicle_license_front_url?: string | null;
+  vehicle_license_back_url?: string | null;
+  vehicle_front_url?: string | null;
+  vehicle_back_url?: string | null;
+  vehicle_right_url?: string | null;
+  vehicle_left_url?: string | null;
+};
+
 export default function Drivers() {
   const [search, setSearch] = useState('');
   const [lastLatencyMs, setLastLatencyMs] = useState<number | null>(null);
+  const [viewDriver, setViewDriver] = useState<DriverDetail | null>(null);
+  const [loadingDetail, setLoadingDetail] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
 
   const driversQuery = useQuery({
     queryKey: ['drivers'],
@@ -85,9 +111,87 @@ export default function Drivers() {
         throw error;
       }
 
-      return (data ?? []) as DriverRow[];
+      const rows = (data ?? []) as any[];
+      return rows.map((d) => ({
+        ...d,
+        users: Array.isArray(d.users) ? d.users[0] : d.users,
+      })) as DriverRow[];
     },
   });
+
+  const fetchDriverDetail = async (driverId: string) => {
+    setLoadingDetail(true);
+    try {
+      const { data, error } = await supabase
+        .from('drivers')
+        .select(`
+          *,
+          users!drivers_id_fkey (
+            full_name,
+            phone,
+            email
+          )
+        `)
+        .eq('id', driverId)
+        .single();
+
+      if (error) throw error;
+
+      const normalized: DriverDetail = {
+        ...(data as any),
+        users: Array.isArray((data as any)?.users) ? (data as any)?.users[0] : (data as any)?.users,
+      };
+      setViewDriver(normalized);
+    } catch (err: any) {
+      console.error('Failed to load driver detail', err);
+      toast.error('Failed to load driver details');
+    } finally {
+      setLoadingDetail(false);
+    }
+  };
+
+  const handleDeleteDriver = async (driverId: string) => {
+    const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) || 'http://localhost:3000/api';
+    if (!window.confirm('Delete this driver and all related data? This cannot be undone.')) return;
+    setDeleteLoading(true);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`${API_BASE.replace(/\/$/, '')}/admin/users/${driverId}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      });
+
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(body?.error || 'Delete failed');
+      }
+
+      toast.success('Driver removed');
+      setViewDriver(null);
+      driversQuery.refetch();
+    } catch (err: any) {
+      console.error('Delete driver error', err);
+      toast.error(err.message || 'Failed to delete driver');
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
+
+  const renderDoc = (url?: string | null, label?: string) => (
+    <div className="space-y-1">
+      <p className="text-xs font-medium text-muted-foreground">{label}</p>
+      <div className="border rounded-md overflow-hidden bg-muted aspect-video flex items-center justify-center">
+        {url ? (
+          <img src={getDriverImageUrl(url)} alt={label} className="w-full h-full object-contain" />
+        ) : (
+          <span className="text-xs text-muted-foreground">No Image</span>
+        )}
+      </div>
+    </div>
+  );
 
   const filteredDrivers = useMemo(() => {
     const rows = driversQuery.data ?? [];
@@ -261,7 +365,7 @@ export default function Drivers() {
                       <TableCell>
                         <div className="flex items-center gap-3">
                           <Avatar className="h-9 w-9">
-                            <AvatarImage src={driver.profile_photo_url ?? undefined} />
+                            <AvatarImage src={getDriverImageUrl(driver.profile_photo_url)} />
                             <AvatarFallback>{initials || 'DR'}</AvatarFallback>
                           </Avatar>
                           <div>
@@ -313,7 +417,13 @@ export default function Drivers() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem>View Details</DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => {
+                                fetchDriverDetail(driver.id);
+                              }}
+                            >
+                              View Details
+                            </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TableCell>
@@ -325,6 +435,100 @@ export default function Drivers() {
           </Table>
         </div>
       </div>
+
+      <Dialog open={!!viewDriver || loadingDetail} onOpenChange={(open) => !open && setViewDriver(null)}>
+        <DialogContent className="max-w-5xl">
+          <DialogHeader>
+            <DialogTitle>Driver Details</DialogTitle>
+            <DialogDescription>
+              {loadingDetail ? 'Loading driver data...' : viewDriver?.users?.full_name || '—'}
+            </DialogDescription>
+          </DialogHeader>
+
+          {loadingDetail ? (
+            <div className="flex items-center justify-center py-8 text-muted-foreground">
+              <Loader2 className="h-5 w-5 animate-spin mr-2" /> Loading...
+            </div>
+          ) : viewDriver ? (
+            <div className="space-y-6">
+              <div className="flex gap-4">
+                <div className="w-32 h-32 rounded-full overflow-hidden bg-muted border">
+                  {viewDriver.profile_photo_url ? (
+                    <img src={getDriverImageUrl(viewDriver.profile_photo_url)} className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="flex items-center justify-center h-full text-muted-foreground">No Photo</div>
+                  )}
+                </div>
+                <div className="grid grid-cols-2 gap-3 text-sm flex-1">
+                  <div>
+                    <p className="text-muted-foreground">Name</p>
+                    <p className="font-medium">{viewDriver.users?.full_name ?? '—'}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Phone</p>
+                    <p className="font-medium">{viewDriver.users?.phone ?? '—'}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Email</p>
+                    <p className="font-medium">{viewDriver.users?.email ?? '—'}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">City</p>
+                    <p className="font-medium">{viewDriver.city ?? '—'}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Vehicle</p>
+                    <p className="font-medium">{[viewDriver.vehicle_model, viewDriver.vehicle_type].filter(Boolean).join(' • ') || '—'}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Plate</p>
+                    <p className="font-medium">{viewDriver.vehicle_plate ?? '—'}</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <p className="text-muted-foreground">Status</p>
+                    <Badge variant="secondary">{viewDriver.status ?? 'pending'}</Badge>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <p className="text-muted-foreground">Rating</p>
+                    {viewDriver.rating ? (
+                      <span className="font-medium">{Number(viewDriver.rating).toFixed(1)}</span>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid md:grid-cols-3 gap-4">
+                {renderDoc(viewDriver.id_front_url, 'ID Front')}
+                {renderDoc(viewDriver.id_back_url, 'ID Back')}
+                {renderDoc(viewDriver.license_front_url, 'License Front')}
+                {renderDoc(viewDriver.license_back_url, 'License Back')}
+                {renderDoc(viewDriver.vehicle_license_front_url, 'Vehicle License Front')}
+                {renderDoc(viewDriver.vehicle_license_back_url, 'Vehicle License Back')}
+                {renderDoc(viewDriver.vehicle_front_url, 'Vehicle Front')}
+                {renderDoc(viewDriver.vehicle_back_url, 'Vehicle Back')}
+                {renderDoc(viewDriver.vehicle_right_url, 'Vehicle Right')}
+                {renderDoc(viewDriver.vehicle_left_url, 'Vehicle Left')}
+              </div>
+
+              <DialogFooter className="justify-between">
+                <Button variant="outline" onClick={() => setViewDriver(null)}>
+                  Close
+                </Button>
+                <Button
+                  variant="destructive"
+                  disabled={deleteLoading}
+                  onClick={() => viewDriver && handleDeleteDriver(viewDriver.id)}
+                >
+                  {deleteLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                  Delete Driver
+                </Button>
+              </DialogFooter>
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   );
 }

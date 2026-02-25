@@ -1,5 +1,9 @@
 import { Request, Response } from 'express';
 import { supabase } from '../config/supabase';
+import path from 'path';
+import fs from 'fs';
+import { promises as fsp } from 'fs';
+import sharp from 'sharp';
 
 export const getDriverSummary = async (req: Request, res: Response) => {
   try {
@@ -42,6 +46,42 @@ export const getDriverSummary = async (req: Request, res: Response) => {
       dailyEarnings,
     });
   } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// Save uploaded driver file locally and return path
+export const uploadDriverFile = async (req: Request, res: Response) => {
+  try {
+    const driverId = req.user!.id;
+    const { base64, filename: bodyFilename, field: bodyField } = req.body as {
+      base64?: string;
+      filename?: string;
+      field?: string;
+    };
+
+    if (!base64) {
+      return res.status(400).json({ error: 'No base64 payload provided' });
+    }
+
+    const baseUploadDir = process.env.DRIVER_UPLOAD_DIR || 'C:/Users/Ezzat/Desktop/smartline-fromislam/smart-new/driver-images';
+    const driverFolder = path.join(baseUploadDir, driverId);
+    await fsp.mkdir(driverFolder, { recursive: true });
+
+    const field = bodyField || 'file';
+    const filenameNoExt = `${driverId}_${field}_${Date.now()}`;
+    const destPath = path.join(driverFolder, `${filenameNoExt}.webp`);
+
+    const buffer = Buffer.from(base64, 'base64');
+
+    // Compress to WebP at 90% quality
+    const webpBuffer = await sharp(buffer).webp({ quality: 90 }).toBuffer();
+    await fsp.writeFile(destPath, webpBuffer);
+
+    const relativePath = path.relative(process.cwd(), destPath);
+    res.json({ path: relativePath });
+  } catch (err: any) {
+    console.error('uploadDriverFile error', err);
     res.status(500).json({ error: err.message });
   }
 };

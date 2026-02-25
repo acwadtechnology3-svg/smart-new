@@ -7,6 +7,7 @@ import { RootStackParamList } from '../../types/navigation';
 import { Colors } from '../../constants/Colors';
 import { apiRequest } from '../../services/backend';
 import { useLanguage } from '../../context/LanguageContext';
+import { useTheme } from '../../theme/useTheme';
 
 type ResetPasswordScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'ResetPassword'>;
 type ResetPasswordScreenRouteProp = RouteProp<RootStackParamList, 'ResetPassword'>;
@@ -16,6 +17,7 @@ export default function ResetPasswordScreen() {
     const route = useRoute<ResetPasswordScreenRouteProp>();
     const { phone } = route.params;
     const { t, isRTL } = useLanguage();
+    const { colors } = useTheme();
 
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
@@ -43,6 +45,7 @@ export default function ResetPasswordScreen() {
         try {
             await apiRequest('/auth/reset-password', {
                 method: 'POST',
+                auth: false,
                 body: JSON.stringify({
                     phone,
                     newPassword: password
@@ -63,7 +66,14 @@ export default function ResetPasswordScreen() {
         } catch (err: any) {
             console.error('[ResetPassword] Error:', err);
             setLoading(false);
-            Alert.alert(t('error'), t('genericError'));
+            const errorCode = err?.message;
+            if (errorCode === 'OTP_REQUIRED') {
+                Alert.alert(t('error'), t('otpRequired') || 'Phone verification required. Please verify your phone first.', [
+                    { text: t('ok'), onPress: () => navigation.goBack() }
+                ]);
+            } else {
+                Alert.alert(t('error'), t('genericError'));
+            }
         }
     };
 
@@ -87,14 +97,14 @@ export default function ResetPasswordScreen() {
 
                             <View style={styles.form}>
                                 <View style={styles.inputContainer}>
-                                    <View style={[styles.passwordContainer, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+                                    <View style={[styles.passwordContainer, { flexDirection: isRTL ? 'row-reverse' : 'row', borderColor: colors.border, backgroundColor: colors.surface }]}>
                                         <TextInput
-                                            style={[styles.input, { textAlign: isRTL ? 'right' : 'left' }]}
+                                            style={[styles.input, { textAlign: isRTL ? 'right' : 'left', color: colors.textPrimary }]}
                                             placeholder={t('newPassword')}
                                             secureTextEntry={!showPassword}
                                             value={password}
                                             onChangeText={setPassword}
-                                            placeholderTextColor="#9CA3AF"
+                                            placeholderTextColor={colors.textMuted}
                                         />
                                         <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={styles.eyeIcon}>
                                             {showPassword ? <EyeOff size={20} color={Colors.textSecondary} /> : <Eye size={20} color={Colors.textSecondary} />}
@@ -103,14 +113,14 @@ export default function ResetPasswordScreen() {
                                 </View>
 
                                 <View style={styles.inputContainer}>
-                                    <View style={[styles.passwordContainer, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+                                    <View style={[styles.passwordContainer, { flexDirection: isRTL ? 'row-reverse' : 'row', borderColor: colors.border, backgroundColor: colors.surface }]}>
                                         <TextInput
-                                            style={[styles.input, { textAlign: isRTL ? 'right' : 'left' }]}
+                                            style={[styles.input, { textAlign: isRTL ? 'right' : 'left', color: colors.textPrimary }]}
                                             placeholder={t('confirmPassword')}
                                             secureTextEntry={!showPassword}
                                             value={confirmPassword}
                                             onChangeText={setConfirmPassword}
-                                            placeholderTextColor="#9CA3AF"
+                                            placeholderTextColor={colors.textMuted}
                                         />
                                     </View>
                                 </View>

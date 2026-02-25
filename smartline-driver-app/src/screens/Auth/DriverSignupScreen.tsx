@@ -5,6 +5,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../types/navigation';
 import { Colors } from '../../constants/Colors';
 import { Picker } from '@react-native-picker/picker';
+import { useTheme } from '../../theme/useTheme';
 
 type DriverSignupScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'DriverSignup'>;
 type DriverSignupScreenRouteProp = RouteProp<RootStackParamList, 'DriverSignup'>;
@@ -24,6 +25,7 @@ export default function DriverSignupScreen() {
     const route = useRoute<DriverSignupScreenRouteProp>();
     const { phone } = route.params;
     const { t, isRTL } = useLanguage();
+    const { colors } = useTheme();
 
     const [nationalId, setNationalId] = useState('');
     const [city, setCity] = useState(EG_CITIES[0]);
@@ -55,10 +57,11 @@ export default function DriverSignupScreen() {
                 <Text style={[styles.subtitle, { textAlign: isRTL ? 'right' : 'left' }]}>{t('step')} 1 {t('of')} 3</Text>
 
                 <View style={styles.inputContainer}>
-                    <Text style={[styles.label, { textAlign: isRTL ? 'right' : 'left' }]}>{t('nationalIdNumber')}</Text>
+                    <Text style={[styles.label, { textAlign: isRTL ? 'right' : 'left', color: colors.textPrimary }]}>{t('nationalIdNumber')}</Text>
                     <TextInput
-                        style={[styles.input, { textAlign: isRTL ? 'right' : 'left' }]}
+                        style={[styles.input, { textAlign: isRTL ? 'right' : 'left', color: colors.textPrimary, borderColor: colors.border, backgroundColor: colors.surface }]}
                         placeholder="14 digit ID"
+                        placeholderTextColor={colors.textMuted}
                         value={nationalId}
                         onChangeText={setNationalId}
                         keyboardType="numeric"
@@ -71,15 +74,16 @@ export default function DriverSignupScreen() {
                 </View>
 
                 <View style={styles.inputContainer}>
-                    <Text style={[styles.label, { textAlign: isRTL ? 'right' : 'left' }]}>{t('city')}</Text>
-                    <View style={styles.pickerContainer}>
+                    <Text style={[styles.label, { textAlign: isRTL ? 'right' : 'left', color: colors.textPrimary }]}>{t('city')}</Text>
+                    <View style={[styles.pickerContainer, { borderColor: colors.border, backgroundColor: colors.surface }]}>
                         <Picker
                             selectedValue={city}
                             onValueChange={(itemValue: string) => setCity(itemValue)}
-                            style={{ direction: isRTL ? 'rtl' : 'ltr' }}
+                            style={{ direction: isRTL ? 'rtl' : 'ltr', color: colors.textPrimary, backgroundColor: colors.surface }}
+                            dropdownIconColor={colors.textPrimary}
                         >
                             {EG_CITIES.map((c) => (
-                                <Picker.Item key={c} label={c} value={c} />
+                                <Picker.Item key={c} label={c} value={c} color={Colors.black} />
                             ))}
                         </Picker>
                     </View>

@@ -8,6 +8,7 @@ import { Colors } from '../../constants/Colors';
 import { ArrowLeft, Gift, ChevronDown } from 'lucide-react-native';
 import axios from 'axios';
 import { API_URL } from '../../config/api';
+import { useTheme } from '../../theme/useTheme';
 
 type SignupScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Signup'>;
 type SignupScreenRouteProp = RouteProp<RootStackParamList, 'Signup'>;
@@ -19,6 +20,7 @@ export default function SignupScreen() {
     const route = useRoute<SignupScreenRouteProp>();
     const { phone } = route.params;
     const { t, isRTL } = useLanguage();
+    const { colors } = useTheme();
 
     const [name, setName] = useState('');
     const [email, setEmail] = useState('');
@@ -109,13 +111,13 @@ export default function SignupScreen() {
                         <Text style={[styles.subtitle, { textAlign: isRTL ? 'right' : 'left' }]}>{t('signUpAs')} {t('passenger') || 'Passenger'}</Text>
 
                         <View style={styles.inputContainer}>
-                            <Text style={[styles.label, { textAlign: isRTL ? 'right' : 'left' }]}>{t('fullName')}</Text>
+                            <Text style={[styles.label, { textAlign: isRTL ? 'right' : 'left', color: colors.textPrimary }]}>{t('fullName')}</Text>
                             <TextInput
-                                style={[styles.input, { textAlign: isRTL ? 'right' : 'left' }]}
+                                style={[styles.input, { textAlign: isRTL ? 'right' : 'left', color: colors.textPrimary, borderColor: colors.border, backgroundColor: colors.surface }]}
                                 placeholder="John Doe"
                                 value={name}
                                 onChangeText={setName}
-                                placeholderTextColor={Colors.textSecondary}
+                                placeholderTextColor={colors.textMuted}
                                 autoComplete="off"
                                 textContentType="none"
                                 importantForAutofill="no"
@@ -124,15 +126,15 @@ export default function SignupScreen() {
                         </View>
 
                         <View style={styles.inputContainer}>
-                            <Text style={[styles.label, { textAlign: isRTL ? 'right' : 'left' }]}>{t('email')}</Text>
+                            <Text style={[styles.label, { textAlign: isRTL ? 'right' : 'left', color: colors.textPrimary }]}>{t('email')}</Text>
                             <TextInput
-                                style={[styles.input, { textAlign: isRTL ? 'right' : 'left' }]}
+                                style={[styles.input, { textAlign: isRTL ? 'right' : 'left', color: colors.textPrimary, borderColor: colors.border, backgroundColor: colors.surface }]}
                                 placeholder="john@example.com"
                                 value={email}
                                 onChangeText={setEmail}
                                 keyboardType="email-address"
                                 autoCapitalize="none"
-                                placeholderTextColor={Colors.textSecondary}
+                                placeholderTextColor={colors.textMuted}
                                 autoComplete="off"
                                 textContentType="none"
                                 importantForAutofill="no"
@@ -141,14 +143,14 @@ export default function SignupScreen() {
                         </View>
 
                         <View style={styles.inputContainer}>
-                            <Text style={[styles.label, { textAlign: isRTL ? 'right' : 'left' }]}>{t('password')}</Text>
+                            <Text style={[styles.label, { textAlign: isRTL ? 'right' : 'left', color: colors.textPrimary }]}>{t('password')}</Text>
                             <TextInput
-                                style={[styles.input, { textAlign: isRTL ? 'right' : 'left' }]}
+                                style={[styles.input, { textAlign: isRTL ? 'right' : 'left', color: colors.textPrimary, borderColor: colors.border, backgroundColor: colors.surface }]}
                                 placeholder="******"
                                 secureTextEntry
                                 value={password}
                                 onChangeText={setPassword}
-                                placeholderTextColor={Colors.textSecondary}
+                                placeholderTextColor={colors.textMuted}
                                 autoComplete="off"
                                 textContentType="none"
                                 importantForAutofill="no"
@@ -157,14 +159,14 @@ export default function SignupScreen() {
                         </View>
 
                         <View style={styles.inputContainer}>
-                            <Text style={[styles.label, { textAlign: isRTL ? 'right' : 'left' }]}>{t('confirmPassword')}</Text>
+                            <Text style={[styles.label, { textAlign: isRTL ? 'right' : 'left', color: colors.textPrimary }]}>{t('confirmPassword')}</Text>
                             <TextInput
-                                style={[styles.input, { textAlign: isRTL ? 'right' : 'left' }]}
+                                style={[styles.input, { textAlign: isRTL ? 'right' : 'left', color: colors.textPrimary, borderColor: colors.border, backgroundColor: colors.surface }]}
                                 placeholder="******"
                                 secureTextEntry
                                 value={confirmPassword}
                                 onChangeText={setConfirmPassword}
-                                placeholderTextColor={Colors.textSecondary}
+                                placeholderTextColor={colors.textMuted}
                                 autoComplete="off"
                                 textContentType="none"
                                 importantForAutofill="no"
@@ -192,12 +194,12 @@ export default function SignupScreen() {
                         {showReferral && (
                             <View style={styles.referralInputContainer}>
                                 <TextInput
-                                    style={[styles.referralInput, { textAlign: isRTL ? 'right' : 'left' }]}
+                                    style={[styles.referralInput, { textAlign: isRTL ? 'right' : 'left', color: colors.textPrimary, borderColor: colors.primary + '40' }]}
                                     placeholder={t('referralCodePlaceholder')}
                                     value={referralCode}
                                     onChangeText={setReferralCode}
                                     autoCapitalize="characters"
-                                    placeholderTextColor={Colors.textSecondary}
+                                    placeholderTextColor={colors.textMuted}
                                     autoComplete="off"
                                     textContentType="none"
                                     importantForAutofill="no"

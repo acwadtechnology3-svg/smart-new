@@ -7,6 +7,7 @@ import { RootStackParamList } from '../../types/navigation';
 import { Colors } from '../../constants/Colors';
 import axios from 'axios';
 import { API_URL } from '../../config/api';
+import { useTheme } from '../../theme/useTheme';
 
 type PhoneInputScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'PhoneInput'>;
 
@@ -15,6 +16,7 @@ import { useLanguage } from '../../context/LanguageContext';
 export default function PhoneInputScreen() {
     const navigation = useNavigation<PhoneInputScreenNavigationProp>();
     const { t, isRTL } = useLanguage();
+    const { colors } = useTheme();
 
     const [phone, setPhone] = useState('');
     const [loading, setLoading] = useState(false);
@@ -90,18 +92,18 @@ export default function PhoneInputScreen() {
                             <Text style={[styles.subtitle, { textAlign: isRTL ? 'right' : 'left' }]}>{t('weWillSendCode')}</Text>
 
                             <View style={[styles.inputContainer, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-                                <View style={styles.prefixContainer}>
-                                    <Text style={styles.prefixText}>EG +20</Text>
+                                <View style={[styles.prefixContainer, { backgroundColor: colors.surface2 }]}>
+                                    <Text style={[styles.prefixText, { color: colors.textPrimary }]}>EG +20</Text>
                                 </View>
-                                <View style={styles.inputWrapper}>
+                                <View style={[styles.inputWrapper, { borderColor: colors.primary, backgroundColor: colors.inputBg }]}>
                                     <TextInput
-                                        style={[styles.input, { textAlign: isRTL ? 'right' : 'left' }]}
+                                        style={[styles.input, { textAlign: isRTL ? 'right' : 'left', color: colors.textPrimary }]}
                                         placeholder="100 123 4567"
                                         keyboardType="phone-pad"
                                         value={phone}
                                         onChangeText={setPhone}
                                         maxLength={11}
-                                        placeholderTextColor={Colors.textSecondary}
+                                        placeholderTextColor={colors.textMuted}
                                         autoComplete="off"
                                         textContentType="none"
                                         importantForAutofill="no"

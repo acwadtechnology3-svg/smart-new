@@ -7,11 +7,9 @@ import * as ImagePicker from 'expo-image-picker';
 import { ArrowLeft, Camera, X } from 'lucide-react-native';
 import { RootStackParamList } from '../../types/navigation';
 import { Colors } from '../../constants/Colors';
-import { supabase } from '../../lib/supabase';
 import { apiRequest } from '../../services/backend';
 // @ts-ignore
 import { readAsStringAsync } from 'expo-file-system/legacy';
-import { decode } from 'base64-arraybuffer';
 import { useLanguage } from '../../context/LanguageContext';
 
 type DriverDocumentsScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'DriverDocuments'>;
@@ -55,31 +53,16 @@ export default function DriverDocumentsScreen() {
         }
     };
 
-    const uploadFile = async (uri: string, path: string) => {
-        try {
-            // Read file as Base64
-            const base64 = await readAsStringAsync(uri, { encoding: 'base64' });
-            const arrayBuffer = decode(base64);
+    const uploadToBackend = async (field: string, uri: string) => {
+        const base64 = await readAsStringAsync(uri, { encoding: 'base64' });
+        const filename = uri.split('/').pop() || `${field}.jpg`;
 
-            const { data, error } = await supabase.storage
-                .from('driver-documents')
-                .upload(path, arrayBuffer, {
-                    contentType: 'image/jpeg',
-                    upsert: true,
-                });
+        const response = await apiRequest<{ path: string }>(`/drivers/upload`, {
+            method: 'POST',
+            body: JSON.stringify({ base64, filename, field }),
+        });
 
-            if (error) throw error;
-
-            // Get public URL
-            const { data: publicUrlData } = supabase.storage
-                .from('driver-documents')
-                .getPublicUrl(path);
-
-            return publicUrlData.publicUrl;
-        } catch (e) {
-            console.error("Upload failed for " + path, e);
-            throw e;
-        }
+        return response.path; // relative path stored in DB
     };
 
     const handleSubmit = async () => {
@@ -108,15 +91,13 @@ export default function DriverDocumentsScreen() {
             // Returns [key, url]
             const handleUpload = async (key: string, uri: string | null): Promise<[string, string] | null> => {
                 if (!uri) return null;
-
                 if (uri.startsWith('http')) {
                     return [key, uri];
                 }
 
-                const ext = uri.split('/').pop()?.split('.').pop() || 'jpg';
-                const path = `${userId}/${key}.${ext}`;
-                const url = await uploadFile(uri, path);
-                return [key, url];
+                const extKey = key; // already snake_case with _url suffix
+                const uploadedPath = await uploadToBackend(extKey, uri);
+                return [key, uploadedPath];
             };
 
             // Add Profile Photo
@@ -146,7 +127,7 @@ export default function DriverDocumentsScreen() {
                 }
             });
 
-            // 3. Insert into Drivers Table
+            // 3. Insert into Drivers Table (paths instead of URLs)
             await apiRequest('/drivers/register', {
                 method: 'POST',
                 body: JSON.stringify({

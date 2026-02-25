@@ -5,10 +5,12 @@ import { RootStackParamList } from '../types/navigation';
 import { useTheme } from '../theme/useTheme';
 
 import SplashScreen from '../screens/Auth/SplashScreen';
+import OnboardingScreen from '../screens/Auth/OnboardingScreen';
 import PhoneInputScreen from '../screens/Auth/PhoneInputScreen';
 import OTPVerificationScreen from '../screens/Auth/OTPVerificationScreen';
 import PasswordScreen from '../screens/Auth/PasswordScreen';
 import SignupScreen from '../screens/Auth/SignupScreen';
+import ResetPasswordScreen from '../screens/Auth/ResetPasswordScreen';
 import ForceUpdateScreen from '../screens/Auth/ForceUpdateScreen';
 
 import CustomerHomeScreen from '../screens/Customer/CustomerHomeScreen';
@@ -74,9 +76,11 @@ export default function AppNavigator() {
                 }}
             >
                 <Stack.Screen name="SplashScreen" component={SplashScreen} />
+                <Stack.Screen name="Onboarding" component={OnboardingScreen} />
                 <Stack.Screen name="PhoneInput" component={PhoneInputScreen} />
                 <Stack.Screen name="OTPVerification" component={OTPVerificationScreen} />
                 <Stack.Screen name="Password" component={PasswordScreen} />
+                <Stack.Screen name="ResetPassword" component={ResetPasswordScreen} />
                 <Stack.Screen name="Signup" component={SignupScreen} />
                 <Stack.Screen name="ForceUpdate" component={ForceUpdateScreen} />
 

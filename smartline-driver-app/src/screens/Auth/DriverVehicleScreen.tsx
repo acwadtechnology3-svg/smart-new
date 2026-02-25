@@ -10,12 +10,14 @@ type DriverVehicleScreenNavigationProp = NativeStackNavigationProp<RootStackPara
 type DriverVehicleScreenRouteProp = RouteProp<RootStackParamList, 'DriverVehicle'>;
 
 import { useLanguage } from '../../context/LanguageContext';
+import { useTheme } from '../../theme/useTheme';
 
 export default function DriverVehicleScreen() {
     const navigation = useNavigation<DriverVehicleScreenNavigationProp>();
     const route = useRoute<DriverVehicleScreenRouteProp>();
     const { phone, name, nationalId, city } = route.params;
     const { t, isRTL } = useLanguage();
+    const { colors } = useTheme();
 
     const [vehicleType, setVehicleType] = useState<'car' | 'motorcycle' | 'taxi' | null>(null);
     const [vehicleModel, setVehicleModel] = useState('');
@@ -51,6 +53,7 @@ export default function DriverVehicleScreen() {
         <TouchableOpacity
             style={[
                 styles.vehicleCard,
+                { backgroundColor: colors.surface, borderColor: colors.border },
                 vehicleType === type && styles.vehicleCardSelected,
             ]}
             onPress={() => setVehicleType(type)}
@@ -65,6 +68,7 @@ export default function DriverVehicleScreen() {
             />
             <Text style={[
                 styles.vehicleLabel,
+                { color: colors.textSecondary },
                 vehicleType === type && styles.vehicleLabelSelected
             ]}>{label}</Text>
         </TouchableOpacity>
@@ -89,20 +93,22 @@ export default function DriverVehicleScreen() {
                 </View>
 
                 <View style={styles.inputContainer}>
-                    <Text style={[styles.label, { textAlign: isRTL ? 'right' : 'left' }]}>{t('vehicleModel')}</Text>
+                    <Text style={[styles.label, { textAlign: isRTL ? 'right' : 'left', color: colors.textPrimary }]}>{t('vehicleModel')}</Text>
                     <TextInput
-                        style={[styles.input, { textAlign: isRTL ? 'right' : 'left' }]}
+                        style={[styles.input, { textAlign: isRTL ? 'right' : 'left', color: colors.textPrimary, borderColor: colors.border, backgroundColor: colors.surface }]}
                         placeholder="e.g. Nissan Sunny 2024"
+                        placeholderTextColor={colors.textMuted}
                         value={vehicleModel}
                         onChangeText={setVehicleModel}
                     />
                 </View>
 
                 <View style={styles.inputContainer}>
-                    <Text style={[styles.label, { textAlign: isRTL ? 'right' : 'left' }]}>{t('vehiclePlate')}</Text>
+                    <Text style={[styles.label, { textAlign: isRTL ? 'right' : 'left', color: colors.textPrimary }]}>{t('vehiclePlate')}</Text>
                     <TextInput
-                        style={[styles.input, { textAlign: isRTL ? 'right' : 'left' }]}
+                        style={[styles.input, { textAlign: isRTL ? 'right' : 'left', color: colors.textPrimary, borderColor: colors.border, backgroundColor: colors.surface }]}
                         placeholder="e.g. ABC 123"
+                        placeholderTextColor={colors.textMuted}
                         value={vehiclePlate}
                         onChangeText={setVehiclePlate}
                     />

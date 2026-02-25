@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, Dimensions, Animated, Easing } from 'react-nati
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MapPin, Car } from 'lucide-react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { RootStackParamList } from '../../types/navigation';
 import { Colors } from '../../constants/Colors';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -55,7 +56,12 @@ export default function SplashScreen() {
             // Check session in parallel
             const sessionLoadPromise = async () => {
                 try {
-                    const sessionStr = await AsyncStorage.getItem('userSession');
+                    const [hasOnboarded, sessionStr] = await Promise.all([
+                        AsyncStorage.getItem('hasOnboarded'),
+                        AsyncStorage.getItem('userSession')
+                    ]);
+
+                    if (!hasOnboarded) return 'Onboarding';
                     if (!sessionStr) return 'PhoneInput';
 
                     const { user } = JSON.parse(sessionStr);
@@ -64,7 +70,7 @@ export default function SplashScreen() {
                     }
                     return 'PhoneInput';
                 } catch (e) {
-                    return 'PhoneInput';
+                    return 'Onboarding';
                 }
             };
 
@@ -92,6 +98,8 @@ export default function SplashScreen() {
 
             if (nextRoute === 'CustomerHome') {
                 navigation.reset({ index: 0, routes: [{ name: 'CustomerHome' }] });
+            } else if (nextRoute === 'Onboarding') {
+                navigation.replace('Onboarding');
             } else {
                 navigation.replace('PhoneInput');
             }
@@ -101,7 +109,10 @@ export default function SplashScreen() {
     }, [navigation]);
 
     return (
-        <View style={styles.container}>
+        <LinearGradient
+            colors={['#1E1B4B', '#4F46E5', '#6366F1']}
+            style={styles.container}
+        >
             {/* Background Circles for decoration */}
             <View style={[styles.circle, styles.circle1]} />
             <View style={[styles.circle, styles.circle2]} />
@@ -127,7 +138,7 @@ export default function SplashScreen() {
             <View style={styles.footer}>
                 <ActivityIndicatorDot />
             </View>
-        </View>
+        </LinearGradient>
     );
 }
 

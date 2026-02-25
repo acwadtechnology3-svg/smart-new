@@ -14,7 +14,7 @@ import { Card } from '../../components/ui/Card';
 import { apiRequest } from '../../services/backend';
 import { socketService } from '../../services/socketService';
 import { locationTracker, TrackingMode } from '../../services/LocationTrackingService';
-import { Menu, Shield, Navigation, ChevronRight } from 'lucide-react-native';
+import { Menu, Shield, Navigation, ChevronRight, CircleDollarSign } from 'lucide-react-native';
 import { useNavigation, useFocusEffect, useRoute } from '@react-navigation/native';
 import Constants from 'expo-constants';
 import DriverSideMenu from '../../components/DriverSideMenu';
@@ -713,7 +713,6 @@ export default function DriverHomeScreen() {
                         <Menu color={colors.textPrimary} size={24} />
                     </TouchableOpacity>
 
-                    {/* Earnings Pill - HIDDEN
                     <TouchableOpacity style={[
                         styles.earningsPill,
                         {
@@ -728,7 +727,6 @@ export default function DriverHomeScreen() {
                             {walletBalance < -100 && <Text variant="caption" style={{ color: colors.danger }}> (!)</Text>}
                         </Text>
                     </TouchableOpacity>
-                    */}
 
                     {/* Driver Profile Pic */}
                     <View style={styles.profileContainer}>

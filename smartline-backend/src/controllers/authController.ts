@@ -121,6 +121,12 @@ export const resetPassword = async (req: Request, res: Response) => {
     const { phone, newPassword } = req.body;
 
     try {
+        // 0. Verify OTP was completed for this phone
+        const otpOk = await assertOtpVerified(phone);
+        if (!otpOk) {
+            return res.status(400).json({ error: 'OTP_REQUIRED', message: 'Phone must be verified before resetting password' });
+        }
+
         // 1. Hash new password
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash(newPassword, salt);

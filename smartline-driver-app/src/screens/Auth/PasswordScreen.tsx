@@ -9,6 +9,7 @@ import { Colors } from '../../constants/Colors';
 import axios from 'axios';
 import { API_URL } from '../../config/api';
 import { apiRequest } from '../../services/backend';
+import { useTheme } from '../../theme/useTheme';
 
 type PasswordScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Password'>;
 type PasswordScreenRouteProp = RouteProp<RootStackParamList, 'Password'>;
@@ -20,10 +21,27 @@ export default function PasswordScreen() {
     const route = useRoute<PasswordScreenRouteProp>();
     const { phone } = route.params;
     const { t, isRTL } = useLanguage();
+    const { colors } = useTheme();
 
     const [password, setPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
     const [loading, setLoading] = useState(false);
+    const [forgotLoading, setForgotLoading] = useState(false);
+
+    const handleForgotPassword = async () => {
+        setForgotLoading(true);
+        try {
+            await axios.post(`${API_URL}/auth/otp/send`, { phone }, { timeout: 15000 });
+        } catch (err: any) {
+            const errorCode = err?.response?.data?.error;
+            if (errorCode !== 'OTP_COOLDOWN') {
+                console.warn('[Password] Forgot password OTP send failed:', err?.message);
+            }
+        } finally {
+            setForgotLoading(false);
+        }
+        navigation.navigate('OTPVerification', { phone, purpose: 'reset-password' });
+    };
 
     const handleLogin = async () => {
         if (!password) {
@@ -139,12 +157,12 @@ export default function PasswordScreen() {
                         {/* Form Section */}
                         <View style={styles.form}>
                             <View style={styles.inputContainer}>
-                                <Text style={[styles.label, { textAlign: isRTL ? 'right' : 'left' }]}>{t('password')}</Text>
-                                <View style={[styles.passwordInputWrapper, showPassword && styles.inputActive, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+                                <Text style={[styles.label, { textAlign: isRTL ? 'right' : 'left', color: colors.textPrimary }]}>{t('password')}</Text>
+                                <View style={[styles.passwordInputWrapper, { backgroundColor: colors.inputBg, borderColor: colors.border }, showPassword && { borderColor: colors.primary, backgroundColor: colors.surfaceHighlight }, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
                                     <TextInput
-                                        style={[styles.input, { textAlign: isRTL ? 'right' : 'left' }]}
+                                        style={[styles.input, { textAlign: isRTL ? 'right' : 'left', color: colors.textPrimary }]}
                                         placeholder={t('enterPassword')}
-                                        placeholderTextColor="#9CA3AF"
+                                        placeholderTextColor={colors.textMuted}
                                         secureTextEntry={!showPassword}
                                         value={password}
                                         onChangeText={setPassword}
@@ -163,9 +181,14 @@ export default function PasswordScreen() {
 
                             <TouchableOpacity
                                 style={[styles.forgotPassword, { alignSelf: isRTL ? 'flex-start' : 'flex-end' }]}
-                                onPress={() => navigation.navigate('OTPVerification', { phone, purpose: 'reset-password' })}
+                                onPress={handleForgotPassword}
+                                disabled={forgotLoading}
                             >
-                                <Text style={styles.forgotPasswordText}>{t('forgotPassword')}</Text>
+                                {forgotLoading ? (
+                                    <ActivityIndicator size="small" color={Colors.primary} />
+                                ) : (
+                                    <Text style={styles.forgotPasswordText}>{t('forgotPassword')}</Text>
+                                )}
                             </TouchableOpacity>
 
                             <View style={styles.imageContainer}>

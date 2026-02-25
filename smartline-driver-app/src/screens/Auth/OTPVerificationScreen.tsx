@@ -7,6 +7,7 @@ import { RootStackParamList } from '../../types/navigation';
 import { Colors } from '../../constants/Colors';
 import axios from 'axios';
 import { API_URL } from '../../config/api';
+import { useTheme } from '../../theme/useTheme';
 
 type OTPVerificationScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'OTPVerification'>;
 type OTPVerificationScreenRouteProp = RouteProp<RootStackParamList, 'OTPVerification'>;
@@ -18,9 +19,10 @@ export default function OTPVerificationScreen() {
     const route = useRoute<OTPVerificationScreenRouteProp>();
     const { phone } = route.params;
     const { t, isRTL } = useLanguage();
+    const { colors } = useTheme();
 
     const [otp, setOtp] = useState(['', '', '', '']);
-    const [timer, setTimer] = useState(30);
+    const [timer, setTimer] = useState(60);
     const [loading, setLoading] = useState(false);
 
     // Refs for input fields to manage focus
@@ -76,6 +78,8 @@ export default function OTPVerificationScreen() {
             const msg = err.response?.data?.error;
             if (msg === 'INVALID_CODE') {
                 Alert.alert(t('error'), t('invalidCode') || 'Invalid verification code. Please try again.');
+            } else if (msg === 'TOO_MANY_ATTEMPTS') {
+                Alert.alert(t('error'), err.response?.data?.message || 'Too many failed attempts. Please request a new code after 15 minutes.');
             } else {
                 Alert.alert(t('error'), t('genericError') || 'Something went wrong. Please try again.');
             }
@@ -87,11 +91,18 @@ export default function OTPVerificationScreen() {
     const handleResend = async () => {
         if (timer > 0) return;
         try {
-            await axios.post(`${API_URL}/auth/otp/send`, { phone }, { timeout: 15000 });
-            setTimer(30);
+            const res = await axios.post(`${API_URL}/auth/otp/send`, { phone }, { timeout: 15000 });
+            const retryAfter = res.data?.retryAfter || 60;
+            setTimer(retryAfter);
             setOtp(['', '', '', '']);
-        } catch {
-            Alert.alert(t('error'), t('genericError') || 'Failed to resend code.');
+        } catch (err: any) {
+            const errorCode = err?.response?.data?.error;
+            if (errorCode === 'OTP_COOLDOWN') {
+                const retryAfter = err.response?.data?.retryAfter || 60;
+                setTimer(retryAfter);
+            } else {
+                Alert.alert(t('error'), t('genericError') || 'Failed to resend code.');
+            }
         }
     };
 
@@ -110,7 +121,7 @@ export default function OTPVerificationScreen() {
                         </View>
 
                         <View style={styles.content}>
-                            <Text style={[styles.title, { textAlign: isRTL ? 'right' : 'left' }]}>{t('verifyNumber')}</Text>
+                            <Text style={[styles.title, { textAlign: isRTL ? 'right' : 'left', color: colors.textPrimary }]}>{t('verifyNumber')}</Text>
                             <Text style={[styles.subtitle, { textAlign: isRTL ? 'right' : 'left' }]}>{t('enterCodeSentTo')} {phone}</Text>
 
                             <View style={[styles.otpContainer, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
@@ -122,7 +133,8 @@ export default function OTPVerificationScreen() {
                                         }}
                                         style={[
                                             styles.otpInput,
-                                            digit ? styles.otpInputFilled : null
+                                            digit ? styles.otpInputFilled : null,
+                                            { color: colors.textPrimary, backgroundColor: colors.surface, borderColor: colors.border }
                                         ]}
                                         value={digit}
                                         onChangeText={(text) => handleOtpChange(text, index)}
