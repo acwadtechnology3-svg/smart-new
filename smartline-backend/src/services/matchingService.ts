@@ -211,7 +211,7 @@ export class MatchingService {
   /**
    * Check if driver is eligible for the trip
    */
-  private isEligible(driverData: any, tripRequest: TripRequest): boolean {
+  private async isEligible(driverData: any, tripRequest: TripRequest): Promise<boolean> {
     // Must be approved
     if (driverData.status !== 'approved') {
       return false;

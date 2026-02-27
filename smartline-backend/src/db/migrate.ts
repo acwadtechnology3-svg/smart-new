@@ -46,6 +46,9 @@ async function executeMigration(filename: string): Promise<void> {
   console.log(`Running migration: ${filename}...`);
 
   try {
+    if (!pool) {
+      throw new Error('Database pool not initialized');
+    }
     // Execute migration in a transaction
     const client = await pool.connect();
     try {

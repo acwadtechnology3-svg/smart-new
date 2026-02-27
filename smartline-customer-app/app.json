@@ -18,7 +18,12 @@
         "NSLocationWhenInUseUsageDescription": "This app needs access to your location to find nearby trips and navigate.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "This app needs access to your location to track rides even when the app is in the background.",
         "NSAppTransportSecurity": {
-          "NSAllowsArbitraryLoads": true
+          "NSAllowsArbitraryLoads": true,
+          "NSExceptionDomains": {
+            "46.202.175.101": {
+              "NSTemporaryExceptionAllowsInsecureHTTPLoads": true
+            }
+          }
         }
       },
       "bundleIdentifier": "com.smartline.app"

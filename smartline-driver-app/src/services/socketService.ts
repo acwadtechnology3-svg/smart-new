@@ -35,16 +35,18 @@ class SocketService {
             const socketUrl = API_URL.replace(/\/api\/?$/, '');
 
             console.log('[Socket] Connecting to:', socketUrl);
+            console.log('[Socket] Token:', `${token.substring(0, 20)}...`);
 
             this.socket = io(socketUrl, {
                 auth: { token },
-                transports: ['polling', 'websocket'],
+                transports: ['polling'],
                 upgrade: true,
                 reconnection: true,
                 reconnectionDelay: 1000,
                 reconnectionDelayMax: 5000,
                 reconnectionAttempts: this.maxReconnectAttempts,
-                timeout: 10000,
+                timeout: 20000,
+                forceNew: true,
             });
 
             this.setupEventHandlers();
@@ -122,8 +124,16 @@ class SocketService {
     private setupEventHandlers() {
         if (!this.socket) return;
 
+        this.socket.io.engine?.on('upgrade', (transport: any) => {
+            console.log('[Socket] ⬆️ Upgraded to:', transport?.name);
+        });
+
         this.socket.on('connect', () => {
+            const transportName = this.socket?.io.engine?.transport?.name;
             console.log('[Socket] ✅ Connected');
+            if (transportName) {
+                console.log('[Socket] Transport:', transportName);
+            }
             this.reconnectAttempts = 0;
         });
 
@@ -137,8 +147,14 @@ class SocketService {
             }
         });
 
-        this.socket.on('connect_error', (error) => {
-            console.error('[Socket] Connection error:', error.message);
+        this.socket.on('connect_error', (error: any) => {
+            console.error('[Socket] Connection error:', error?.message || error);
+            if (error?.type) {
+                console.error('[Socket] Error type:', error.type);
+            }
+            if (error?.description) {
+                console.error('[Socket] Description:', error.description);
+            }
             this.reconnectAttempts++;
 
             if (this.reconnectAttempts >= this.maxReconnectAttempts) {
